@@ -1,10 +1,10 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import ConnectDbForm from "./routes/dbConnect"
-import TableData, { connectSomething } from "./routes/dbDataDisplay"
+import ConnectDbForm, { connectAction } from "./routes/dbConnect"
+import TableData, { getDbData } from "./routes/dbDataDisplay"
 
 
 function Column(){
@@ -33,11 +33,12 @@ const router = createBrowserRouter([
   {
     path: "/",
     element: <TableData />,
-    loader: connectSomething
+    loader: getDbData
   },
   {
     path: "/connect-db",
-    element: <ConnectDbForm />
+    element: <ConnectDbForm />,
+    action: connectAction
   }
 ])
 

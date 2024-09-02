@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useLoaderData, redirect } from "react-router-dom";
 
 function TableHeader({ headersList } : {headersList : string[]}) {
@@ -19,30 +19,29 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
     rows.push(<tr>{rowData}</tr>);
     rowData = [];
   })
-  
-  
   return <tbody>{rows}</tbody>
 }
 
-export function connectSomething() {
-	return redirect("/connect-db");
+export function getDbData():any {
+  let responseDetails = {data: null, hasError: false}
+  fetch('http://localhost:4900/', {
+    credentials: "include",
+  }) 
+  .then(response => {
+    if (response.ok) {
+      return response.json()
+    }
+  })
+  .then (response => {responseDetails.data = response})
+  .catch((error) =>  responseDetails.hasError = true)
+  if (responseDetails.hasError)
+    return redirect("/connect-db");
+  return responseDetails.data;
 }
 
 export default function TableData() {
-  // useEffect(()=> {
-  //   fetch('http://localhost:4900') 
-  //   .then(response => {
-  //     if (response.ok) {
-  //       return response.json()
-  //     }
-  //   })
-  //   .then (response => setData(response))
-  //   .catch((error) => console.log(error))
-  // }, [])
-  
-  const connectionURI = useLoaderData();
-  console.log(connectionURI);
-  const [data, setData] = useState<any>(null);
+  const dbData = useLoaderData();
+  const [data, setData] = useState<any>(dbData);
 
   let columns:string[] = [];
 
