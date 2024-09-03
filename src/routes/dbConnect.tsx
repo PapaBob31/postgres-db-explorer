@@ -4,7 +4,6 @@ export async function connectAction({ request, params }) {
 	const formData = await request.formData();
 	const urlParams = Object.fromEntries(formData); // connection parameters
 	let connectionURI = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:5432/${urlParams.dbname}`
-	let connectionDetails = {msg: "", hasError: false};
 
 	const serverReq = new Request("http://localhost:4900/connect-db", {
 		credentials: "include",
@@ -13,19 +12,17 @@ export async function connectAction({ request, params }) {
 		body: JSON.stringify({str: connectionURI})
 	})
 
-	const response = fetch(serverReq)
-
-	response.then(res => {
-		if (res.ok) {
-			return res.json()
-		}else throw new Error("Something went wrong when connecting to the database!");
-	})
-	.then(res => {connectionDetails.msg = res})
-	.catch(error => {alert(error.message); connectionDetails.hasError = true});
-
-	if (connectionDetails.hasError)
-		return null;
-	return redirect("/");
+	try {
+		const response = await fetch(serverReq)	
+		if (response.ok) {
+			return redirect("/");
+		}else {
+			alert("Couldn't connect to database, please check your connection parameters")
+			return null
+		}
+	}catch(error) {
+		alert("Internet connection Error: Check your internet connection and if the database is reachable")
+	}
 }
 
 export default function ConnectDbForm() {

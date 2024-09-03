@@ -22,36 +22,44 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
   return <tbody>{rows}</tbody>
 }
 
-export function getDbData():any {
+export async function getDbData():any {
   let responseDetails = {data: null, hasError: false}
-  fetch('http://localhost:4900/', {
-    credentials: "include",
-  }) 
-  .then(response => {
-    if (response.ok) {
-      return response.json()
+
+  try{
+    const response = await fetch('http://localhost:4900/', {
+      credentials: "include",
+      headers: {
+        "Content-Type": "text/plain"
+      }
+    })
+
+    if (response.ok){
+      responseDetails.data = await response.json()
+    }else{
+      return redirect("/connect-db");
     }
-  })
-  .then (response => {responseDetails.data = response})
-  .catch((error) =>  responseDetails.hasError = true)
-  if (responseDetails.hasError)
+  }catch(error) {
     return redirect("/connect-db");
+  }
+  
   return responseDetails.data;
 }
 
 export default function TableData() {
-  const dbData = useLoaderData();
-  const [data, setData] = useState<any>(dbData);
+  const dbData:any = useLoaderData();
+  const [data, setData] = useState<any>(dbData.data);
 
   let columns:string[] = [];
-
-  for (let attr in data.rows[0]) {
-    columns.push(attr);
+  if (data) {
+    for (let attr in data.rows[0]) {
+      columns.push(attr);
+    }
   }
-  return (
-    <table>
+  
+ return data ?
+    (<><h1>Tables in the Public schema</h1>
+     <table>
       <thead><TableHeader headersList={columns} /></thead>
       <TableBody headersList={columns} data={data.rows} />
-    </table>
-  )
+    </table></>) : <h2>Omo! no data oo</h2>
 }
