@@ -1,0 +1,9 @@
+{
+	"compilerOptions": {
+		"allowUnreachableCode": false,
+		"noImplicitAny": false,
+		"noEmitOnError": false,
+		"outDir": "dist",
+		"lib": ["es2021", "ES2016", "dom"], // install the @types/nodes package
+	}
+}
