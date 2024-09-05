@@ -2,7 +2,7 @@ import setupDbParams from "./utils/connect-db"
 
 const express = require("express");
 const cors = require("cors")
-var cookieParser = require('cookie-parser');
+const cookieParser = require('cookie-parser');
 const app = express();
 const PortNo = 4900;
 
@@ -14,45 +14,71 @@ function logRequestDetails(req, res, next) {
 	next()
 }
 
+// TODO: set proper time intervals as well as proper cookie parameters
+
+
 function setCorsHeaders(req, res, next) {
 	res.set('Access-Control-Allow-Origin', 'http://localhost:5173') // TODO: make it environment dependent
 	res.set('Access-Control-Allow-Headers', 'Content-Type')
 	res.set("Access-Control-Allow-Credentials", "true");
-	res.set("Access-Control-Max-Age", "86400");	// 24 hours, should cha nge later
+	res.set("Access-Control-Max-Age", "86400");	// 24 hours, should change later
 	res.set("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
 	next()
 }
 
 app.use(logRequestDetails, setCorsHeaders)
 
-async function processReq(req, res) {
-	if (req.cookies.connectionStr) {
-		const pool = setupDbParams(req.cookies.connectionStr)
-		const client = await pool.connect()
-		let data = null;
-		try {
-			data = await client.query("SELECT table_name FROM information_schema.tables where table_schema = 'public';");
-			res.status(200).json({data})
-		}catch(error) {
-			res.status(500).json({msg: "Something went wrong!"})
-		}finally {
-			client.release();
-		}
-	}else res.status(400).json({msg: "no db was specified!"})
+async function processReq(connectionStr) {
+	const pool = setupDbParams(connectionStr)
+	let client;
+	try {
+		client = await pool.connect();
+	}catch(error) {
+		// add better error message i.e server doesn't support ssl, invalid connection strings
+		return {statusCode: 400, info: {errorMsg: error.message, data: null}};
+	} 
+
+	let data = null;
+	try {
+		data = await client.query("SELECT table_name FROM information_schema.tables where table_schema = 'public';");
+		return {statusCode: 200, info: {errorMsg: null, data}};
+	}catch(error) {
+		console.log(error)
+		client.release();
+		return {statusCode: 500, info: {errorMsg: "Something went wrong!", data}};
+	}finally {
+		client.release();
+	}
 }
 
-app.get('/', processReq);
+async function connectPrevConnectedDb(req, res) {
+	if (req.cookies.connectionStr) {
+		const connectResults = await processReq(req.cookies.connectionStr)
+		res.status(connectResults.statusCode).json(connectResults.info)
+	}else res.status(400).json({errorMsg: "no db was specified!", data: null})
+}
 
+app.get('/', connectPrevConnectedDb);
 
 app.options('/connect-db', (req, res) => {
 	res.status(204).send()
 })
 
-app.post('/connect-db', (req, res) => {
-	res.cookie('connectionStr', req.body.str, 
+app.post('/connect-db', async (req, res, next) => {
+	let connectResults;
+	if (req.body.str) {
+		connectResults = await processReq(req.body.str)
+	}else {
+		res.status(400).json(connectResults.info)
+		return 
+	}
+
+	if (connectResults.statusCode == 200) {
+		res.cookie('connectionStr', req.body.str, 
 		{httpOnly: true, secure: false, maxAge: 3600000} // is this sec or msec?
-	)
-	res.status(200).json({msg: "successful!"});
+		)
+	}
+	res.status(connectResults.statusCode).json(connectResults.info)
 })
 
 console.log(`Listening on port ${PortNo}`)
