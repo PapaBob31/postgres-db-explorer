@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useLoaderData, redirect } from "react-router-dom";
+import { useLocation, redirect } from "react-router-dom";
 
 function TableHeader({ headersList } : {headersList : string[]}) {
   let htmlElements = []; // come back to define the proper type
@@ -24,29 +24,36 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
 
 export async function getDbData():any {
   let responseDetails = {data: null, hasError: false}
+  let response;
 
   try{
-    const response = await fetch('http://localhost:4900/', {
+    response = await fetch('http://localhost:4900/', {
       credentials: "include",
       headers: {
         "Content-Type": "text/plain"
       }
     })
+  }catch(error) { // Network error
+    return null
+  }
 
-    if (response.ok){
-      responseDetails.data = await response.json()
-    }else{
-      return redirect("/connect-db");
-    }
-  }catch(error) {
-    return redirect("/connect-db");
+  if (response.ok){
+    responseDetails.data = await response.json()
+  }else{
+    redirect("/connect-db");
   }
   
   return responseDetails.data;
 }
 
 export default function TableData() {
-  const dbData:any = useLoaderData();
+  let dbData = useLocation().state
+  if (!dbData) {
+    dbData = getDbData();
+  }
+  if (!dbData) {
+    return <h1>Error! Couldn't connect to database. Check your internet connection and try again</h1>
+  }
   const [data, setData] = useState<any>(dbData.data);
 
   let columns:string[] = [];
