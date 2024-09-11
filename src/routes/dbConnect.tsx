@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useRef } from "react"
 
-export async function connectDb(urlParams) {
+async function connectDb(urlParams) {
 	let connectionURI = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:5432/${urlParams.dbname}`
 
 	const serverReq = new Request("http://localhost:4900/connect-db", {
@@ -40,11 +40,11 @@ export default function ConnectDbForm() {
 		const response = await connectDb(urlParams);
 		if (!response) return;
 
-		const data = await response.json()
+		const responseBody = await response.json()
 		if (response.ok) {
-			navigate("/", {state: data.data});
+			navigate("/", {state: responseBody.data});
 		}else {
-			alert(data.errorMsg)
+			alert(responseBody.errorMsg)
 		}
 	}
 	return (
