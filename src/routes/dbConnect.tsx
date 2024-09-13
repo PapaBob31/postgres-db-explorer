@@ -2,13 +2,13 @@ import { useNavigate } from "react-router-dom";
 import { useRef } from "react"
 
 async function connectDb(urlParams) {
-	let connectionURI = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:5432/${urlParams.dbname}`
+	let serverSpecs = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:5432`
 
-	const serverReq = new Request("http://localhost:4900/connect-db", {
+	const serverReq = new Request("http://localhost:4900/verify-connect-str", {
 		credentials: "include",
 		headers: {"Content-Type": "application/json"},
 		method: "POST",
-		body: JSON.stringify({str: connectionURI})
+		body: JSON.stringify({serverSpecs, targetDb: urlParams.dbname})
 	})
 
 	let response;
@@ -40,11 +40,10 @@ export default function ConnectDbForm() {
 		const response = await connectDb(urlParams);
 		if (!response) return;
 
-		const responseBody = await response.json()
 		if (response.ok) {
-			navigate("/", {state: responseBody.data});
+			navigate("/", {state: urlParams.dbname});
 		}else {
-			alert(responseBody.errorMsg)
+			alert("Invalid connection string")
 		}
 	}
 	return (

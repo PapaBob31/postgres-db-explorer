@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react"
-import { useLocation } from "react-router-dom";
+import { useState, useEffect, createContext, useRef, useContext } from "react"
+import { useLocation, useNavigate } from "react-router-dom";
+
+const DataDisplay = createContext(null);
+const TargetDb = createContext("")
 
 function TableHeader({ headersList } : {headersList : string[]}) {
   let htmlElements = []; // come back to define the proper type
@@ -23,32 +26,8 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
 }
 
 
-
-function TableDisplay() {
-  
-
-  let columns:string[] = [];
-  let data = dbConnInfo.data;
-  if (data) {
-    for (let attr in data.rows[0]) { // first row is picked only since all the other objs will have same attributes
-      columns.push(attr);
-    }
-  }
-  
- return data ?
-    (<><h1>Tables in the Public schema</h1>
-     <table>
-      <thead><TableHeader headersList={columns} /></thead>
-      <TableBody headersList={columns} data={data.rows} />
-    </table></>) : <h2>Omo! no data oo</h2>
-}
-
-
-function Roles({dbClusterRoles} : {dbClusterRoles: any}) {
-  const listItems = [];
-  for (let data of dbClusterRoles.rows) {
-    listItems.push(<li><button>{data[dbClusterRoles.fields[0].name]}</button></li>)
-  }
+function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
+  const listItems = dbClusterRoles.map(roleName => <li key={roleName}><button>{roleName}</button></li>)
   return (
     <section id="cluster-roles">
       <h2>Roles</h2>
@@ -60,11 +39,125 @@ function Roles({dbClusterRoles} : {dbClusterRoles: any}) {
   )
 }
 
+function SchemaTables({tableList} : {tableList: string[]}) {
+  const setDisplayData = useContext(DataDisplay);
+  const targetDb = useContext(TargetDb);
 
-function DataBases({clusterDbs}:{clusterDbs: any}) {
-  const listItems = []
-  for (let data of clusterDbs.rows) {
-    listItems.push(<li><button>{data[clusterDbs.fields[0].name]}</button></li>)
+  function getDataAndSetDisplay(tableName: string){ // useMemo for this or something like that so that when next It's clicked
+    fetch("http://localhost:4900/query", {
+      headers: {
+        "Content-Type": "application/json"
+      },
+      credentials: "include",
+      method: "POST",
+      body: JSON.stringify({targetDb, query: `SELECT * FROM ${tableName}`})
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg){
+        alert(responseBody.errorMsg)
+      }else {
+        setDisplayData(responseBody.data)
+      }
+    })
+    
+  }
+  return (
+    <ul>
+      {tableList.map(tableName => (
+        <li key={tableName}>
+          <button className="table-btn" onClick={()=>{getDataAndSetDisplay(tableName)}}>{tableName}</button>
+        </li>)
+      )}
+    </ul>
+  )
+}
+
+function Schema({name, tableList}: {name: string, tableList: string[]}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <>
+      <button onClick={() => setVisible(!visible)}>{name}</button>
+      {visible && <SchemaTables tableList={tableList}/>}
+    </>
+  )
+}
+
+
+function DataBase({dbName, initDb}: {dbName: string, initDb: string}) {
+  const schemas = useRef<{name: string; tables: string[];}[]>([]);
+  const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
+
+  useEffect(() => {
+    if (initDb === dbName){
+      fetchDbDetails()
+      .then(response => response.json())
+      .then(responseBody => {
+        if (responseBody.errorMsg) {
+          alert(responseBody.errorMsg)
+        }else {
+          schemas.current = responseBody.data
+          setDbObjectsVisible(true)
+        }
+      });
+    }
+  }, [dbName])
+
+  function fetchDbDetails() {
+    return fetch("http://localhost:4900/get-db-details", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      body: JSON.stringify({targetDb: dbName})
+    })
+  }
+
+  function toggleChildrenVisibilty() {
+    if (dbObjectsVisible){
+      setDbObjectsVisible(false);
+      return;
+    }else if (schemas.current.length === 0) {
+      fetchDbDetails()
+      .then(response => response.json())
+      .then(responseBody => {
+        if (responseBody.errorMsg) {
+          alert(responseBody.errorMsg)
+        }else {
+          schemas.current = responseBody.data
+          setDbObjectsVisible(true)
+        }
+      })
+    }else {
+      setDbObjectsVisible(true)
+    }
+  }
+
+  return (
+    <li>
+      <button onClick={toggleChildrenVisibilty}>{dbName}</button>
+      <TargetDb.Provider value={dbName}>
+        {dbObjectsVisible && (
+          <ul>
+            {schemas.current.map(
+              (schema) => (
+                <li key={schema.name}>
+                  <Schema name={schema.name} tableList={schema.tables} />
+                </li>
+            ))}
+          </ul>
+        )}
+      </TargetDb.Provider>
+    </li>
+  )
+}
+
+
+function DataBases({clusterDbs}:{clusterDbs: string[]}) {
+  let initialConnectedDb = useLocation().state; // look into it. It seems to persist data across sessions
+  const listItems = [];
+  for (let dbName of clusterDbs) {
+    listItems.push(<DataBase dbName={dbName} key={dbName} initDb={initialConnectedDb}/>)
   }
   return (
     <section id="cluster-dbs">
@@ -77,47 +170,70 @@ function DataBases({clusterDbs}:{clusterDbs: any}) {
 }
 
 
-function ClusterLevelObjects({dataBases, roles} : {dataBases: any, roles: any}) {
+
+function ClusterLevelObjects() {
+  const navigate = useNavigate();
+  let initialConnectedDb = useLocation().state;
+  if (!initialConnectedDb) {
+    navigate("/connect-db")
+  }
+  console.log(initialConnectedDb, 0);
+  const [data, setData] = useState<{roles: string[], dataBases: string[]}>(null);
+  useEffect(() => {
+    fetch("http://localhost:4900", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      body: JSON.stringify({targetDb: initialConnectedDb}) 
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        navigate("/connect-db")
+      }else {
+        setData(responseBody.data)
+      }
+    })
+    .catch(() => alert("Internet connection Error: Check your internet connection and if the database is reachable"))
+  }, [])
+  
   return (
     <section id="cluster-lvl-objs">
-      <Roles dbClusterRoles={roles} />
-      <DataBases clusterDbs={dataBases} />
+      {data && (
+        <>
+          <Roles dbClusterRoles={data.roles} />
+          <DataBases clusterDbs={data.dataBases} />
+        </>
+      )}
     </section>
   )
 }
 
+
+interface GenericQueryData {
+  rows: any[];
+  fields: string[];
+}
+
+function TableDisplay({tableData} : {tableData: GenericQueryData}) {
+  console.log(tableData, 56);
+  
+ return (tableData && (
+  <section>
+     <h1>Tables Data</h1>
+     <table>
+      <thead><TableHeader headersList={tableData.fields} /></thead>
+      <TableBody headersList={tableData.fields} data={tableData.rows} />
+    </table>
+  </section>))
+}
+
 export default function Main() {
-  let dbData = useLocation().state || {errorMsg: "", loading: true, data: null} // look into it. It seems to persist data across sessions
-  const [dbConnInfo, setData] = useState<any>(dbData);
-
-  useEffect(() => {
-    if (!dbConnInfo.loading) return;
-    fetch('http://localhost:4900/', {
-      credentials: "include",
-      headers: {
-        "Content-Type": "text/plain"
-      }
-    })
-    .then((response) => response.json())
-    .then((resBody) => setData(resBody))
-    .catch((error) => {
-      console.log(error)
-      setData({errorMsg: "Internet connection Error: Check your internet connection and if the database is reachable", data: null, loading: false})
-    })
-  }, [])
-
-
-  if (dbConnInfo.loading) {
-    return <h1>Loading...</h1>
-  }else if (dbConnInfo.errorMsg) {
-    return <h1>{dbConnInfo.errorMsg}</h1>
-  }
-
+  const [tableData, setTableData] = useState(null);
   return (
-    <>
-      <ClusterLevelObjects dataBases={dbConnInfo[0]} roles={dbConnInfo[1]}/>
-      <section></section>
-      {/*<TableDisplay/>*/}
-    </>
+    <DataDisplay.Provider value={setTableData}>
+      <ClusterLevelObjects />
+      <TableDisplay tableData={tableData} />
+    </DataDisplay.Provider>
   )
 }
