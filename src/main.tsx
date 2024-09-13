@@ -1,10 +1,10 @@
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
-import { StrictMode } from 'react'
+// import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import ConnectDbForm from "./routes/dbConnect"
-import TableData from "./routes/dbDataDisplay"
+import Main from "./routes/dbDataDisplay"
 
 
 function Column(){
@@ -32,7 +32,7 @@ function Column(){
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <TableData />,
+    element: <Main />,
   },
   {
     path: "/connect-db",
@@ -40,8 +40,8 @@ const router = createBrowserRouter([
   }
 ])
 
+// Handle strict mode effect of causing double requests to database
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <RouterProvider router={router} />
-  </StrictMode>,
+   // making alot of requests and strict mode is doubling the load
+   <RouterProvider router={router} />
 )
