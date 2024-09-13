@@ -14,18 +14,28 @@ function logRequestDetails(req, res, next) {
 	next()
 }
 
+function validateConnectionStr(req, res, next) {
+	if (!req.cookies.serverSpecs && req.originalUrl !== "/verify-connect-str") {
+		res.status(400).json({errorMsg: "Bad Request! No connection string was sepcified", data: null})
+	}else {
+		next()
+	}
+}
+
 function setCorsHeaders(req, res, next) {
 	res.set('Access-Control-Allow-Origin', 'http://localhost:5173') // TODO: make it environment dependent
 	res.set('Access-Control-Allow-Headers', 'Content-Type')
 	res.set("Access-Control-Allow-Credentials", "true");
 	res.set("Access-Control-Max-Age", "86400");	// 24 hours, should change later
 	res.set("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-	next()
+	if (req.method === "OPTIONS") {
+		res.status(204).send()
+	}else next()
 }
 
-app.use(logRequestDetails, setCorsHeaders)
+app.use(logRequestDetails, setCorsHeaders, validateConnectionStr)
 
-async function processReq(connectionStr) {
+async function processReq(connectionStr, sqlQuery) {
 	const pool = setupDbParams(connectionStr)
 	let client;
 	try {
@@ -33,52 +43,121 @@ async function processReq(connectionStr) {
 	}catch(error) {
 		// add better error message i.e server doesn't support ssl, invalid connection strings
 		console.log(error)
-		return {statusCode: 400, info: {errorMsg: error.message, data: null}};
+		return {errorMsg: error.message, data: null};
 	} 
 
 	let data = null;
 	try {
-		// SELECT table_name FROM information_schema.tables where table_schema = 'public';
-		data = await client.query("SELECT datname FROM pg_database; SELECT rolname FROM pg_roles;");
-		return {statusCode: 200, info: {errorMsg: null, data}};
+		data = await client.query(sqlQuery);
+		return {errorMsg: null, data};
 	}catch(error) {
 		console.log(error)
 		client.release();
-		return {statusCode: 500, info: {errorMsg: "Something went wrong!", data}};
+		return {errorMsg: "Something went wrong!", data};
 	}finally {
 		client.release();
 	}
 }
 
-async function connectPrevConnectedDb(req, res) {
-	if (req.cookies.connectionStr) {
-		const connectResults = await processReq(req.cookies.connectionStr)
-		res.status(connectResults.statusCode).json(connectResults.info)
-	}else res.status(400).json({errorMsg: "no db was specified!", data: null})
+
+async function getDbDetails(connectionStr) {
+	const pool = setupDbParams(connectionStr)
+	let client;
+	try {
+		client = await pool.connect();
+	}catch(error) {
+		console.log(error)
+		return {errorMsg: error.message, data: null}
+	}
+
+	try { // fix double table bug
+		let schemaData = await client.query(
+			"SELECT schema_name, table_name FROM information_schema.tables, information_schema.schemata WHERE schema_name = information_schema.tables.table_schema;"
+			);
+		const schemaNameKey = schemaData.fields[0].name;
+		const tableNameKey = schemaData.fields[1].name;
+
+		const data: {name: string, tables: string[]}[] = [];
+
+		for (let i=0; i<schemaData.rows.length; i++) {
+			if (data.length === 0) {
+				data.push({name: schemaData.rows[i][schemaNameKey], tables: [schemaData.rows[i][tableNameKey]]})
+				continue;
+			}
+			for (let j=0; j<data.length; j++) {
+				if (data[j].name === schemaData.rows[i][schemaNameKey]) {
+					data[j].tables.push(schemaData.rows[i][tableNameKey])
+					break;
+				}
+				if (j === data.length-1) {
+					data.push({name: schemaData.rows[i][schemaNameKey], tables: [schemaData.rows[i][tableNameKey]]})
+				}
+			}
+		}
+		
+		return {errorMsg: null, data};
+	}catch(error) {
+		console.log(error)
+		client.release();
+		return {errorMsg: "Something went wrong!", data: null};
+	}finally {
+		client.release();
+	}
 }
 
-app.get('/', connectPrevConnectedDb);
-
-app.options('/connect-db', (req, res) => {
-	res.status(204).send()
-})
-
-app.post('/connect-db', async (req, res, next) => {
-	let connectResults;
-	if (req.body.str) {
-		connectResults = await processReq(req.body.str)
+app.post("/query", async (req, res) => {
+	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	const results = await processReq(connectionStr, req.body.query)
+	if (results.errorMsg) {
+		res.status(400).json({errorMsg: results.errorMsg, data: null})
 	}else {
-		res.status(400).json(connectResults.info)
-		return 
+		const processedData = {rows: results.data.rows, fields: results.data.fields.map(field => field.name)};
+		res.status(200).json({errorMsg: null, data: processedData})
 	}
-
-	if (connectResults.statusCode == 200) {
-		res.cookie('connectionStr', req.body.str, 
-		{httpOnly: true, secure: true, maxAge: 604800} // 7 days
-		)
-	}
-	res.status(connectResults.statusCode).json(connectResults.info)
 })
 
+app.post('/get-db-details', async (req, res) => {
+	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	const processedData = await getDbDetails(connectionStr)
+	if (processedData.errorMsg) {
+		res.status(400).json({errorMsg: processedData.errorMsg, data: null})
+	}else res.status(200).json(processedData);
+})
+
+app.post("/", async (req, res) => {
+	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	const results = await processReq(connectionStr, "SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;")
+	if (results.errorMsg) {
+		res.status(400).json({errorMsg: results.errorMsg, data: null})
+	}else {
+		const dbData = results.data;
+		const responseData = {roles: [], dataBases: []};
+		responseData.roles = dbData[0].rows.map(row => row[dbData[0].fields[0].name]);
+		responseData.dataBases = dbData[1].rows.map(row => row[dbData[1].fields[0].name]);
+		res.status(200).json({errorMsg: null, data: responseData})
+	}
+	
+})
+
+app.post("/verify-connect-str", async (req, res) => {
+	let connectionStr = `${req.body.serverSpecs}/${req.body.targetDb}`
+	const pool = setupDbParams(connectionStr);
+	let client, statusCode:number;
+	try {
+		client = await pool.connect();
+		statusCode = 200;
+	}catch(error) {
+		// add better error message i.e server doesn't support ssl, invalid connection strings
+		console.log(error)
+		statusCode = 400;
+	}finally {
+		client.release();
+	}
+	if (statusCode === 200) {
+		res.cookie('serverSpecs', req.body.serverSpecs,
+		{httpOnly: true, secure: true, maxAge: 604800}) // 7 days
+	}
+	return res.status(statusCode).send()
+})
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)
