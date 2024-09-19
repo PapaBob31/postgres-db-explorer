@@ -35,6 +35,12 @@ function setCorsHeaders(req, res, next) {
 
 app.use(logRequestDetails, setCorsHeaders, validateConnectionStr)
 
+app.use(["/query-table", "/create-table"], (req, res, next) => {
+	if (!req.body.query){ // TODO: learn how to prevent sql injection
+		res.status(400).json({errorMsg: "Invalid data body", data: null})
+	}else next();
+})
+
 async function processReq(connectionStr, sqlQuery) {
 	const pool = setupDbParams(connectionStr)
 	let client;
@@ -105,12 +111,23 @@ async function getDbDetails(connectionStr) {
 	}
 }
 
-app.post("/query", async (req, res) => {
+app.post("/create-table", async (req, res) => {
+	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	const results = await processReq(connectionStr, req.body.query);
+	if (results.errorMsg) {
+		res.status(400).json({errorMsg: results.errorMsg, data: null})
+	}else {
+		res.status(200).json({tableName: "", errorMsg: null})
+	}
+})
+
+app.post("/query-table", async (req, res) => {
 	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
 	const results = await processReq(connectionStr, req.body.query)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
 	}else {
+		console.log(results.data.rows)
 		const processedData = {rows: results.data.rows, fields: results.data.fields.map(field => field.name)};
 		res.status(200).json({errorMsg: null, data: processedData})
 	}
