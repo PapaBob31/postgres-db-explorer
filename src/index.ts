@@ -16,6 +16,7 @@ function logRequestDetails(req, res, next) {
 
 function validateConnectionStr(req, res, next) {
 	if (!req.cookies.serverSpecs && req.originalUrl !== "/verify-connect-str") {
+		console.log("Invalid connection string")
 		res.status(400).json({errorMsg: "Bad Request! No connection string was sepcified", data: null})
 	}else {
 		next()
@@ -37,6 +38,7 @@ app.use(logRequestDetails, setCorsHeaders, validateConnectionStr)
 
 app.use(["/query-table", "/create-table"], (req, res, next) => {
 	if (!req.body.query){ // TODO: learn how to prevent sql injection
+		console.log("Invalid request body")
 		res.status(400).json({errorMsg: "Invalid data body", data: null})
 	}else next();
 })
@@ -172,9 +174,9 @@ app.post("/verify-connect-str", async (req, res) => {
 	}
 	if (statusCode === 200) {
 		res.cookie('serverSpecs', req.body.serverSpecs,
-		{httpOnly: true, secure: true, maxAge: 604800}) // 7 days
+		{httpOnly: true, secure: true, maxAge: 6.04e8}) // 7 days
 	}
-	return res.status(statusCode).send()
+	res.status(statusCode).send()
 })
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)
