@@ -1,28 +1,28 @@
-import { useState, useEffect, createContext, useContext } from "react"
-import { useLocation, useNavigate } from "react-router-dom";
+import { useState, useEffect, createContext } from "react"
 import { DataBases, Roles, TableDisplay } from "./dbData"
 import { CreateTable } from "./newTableForm";
-import { TargetDb } from "./dbData"
-export const DataDisplay = createContext(null);
+// import { TargetDb } from "./dbData"
+export const DataDisplayFn = createContext(()=>{});
 
-function ClusterLevelObjects() {
-  const navigate = useNavigate();
-  let initialConnectedDb = useLocation().state;
-  if (!initialConnectedDb) {
-    navigate("/connect-db")
-  }
-  const [data, setData] = useState<{roles: string[], dataBases: string[]}>(null);
+
+function ClusterLevelObjects({ displayDbForm, targetDb }: {displayDbForm: () => void, targetDb: string}) {
+  
+  const [data, setData] = useState<{roles: string[], dataBases: string[]}>({roles: [], dataBases: []});
   useEffect(() => {
+    if (!targetDb) {
+      displayDbForm()
+      return
+    }
     fetch("http://localhost:4900", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({targetDb: initialConnectedDb}) 
+      body: JSON.stringify({targetDb}) 
     })
     .then(response => response.json())
     .then(responseBody => {
       if (responseBody.errorMsg) {
-        navigate("/connect-db")
+        displayDbForm()
       }else {
         setData(responseBody.data)
       }
@@ -35,14 +35,14 @@ function ClusterLevelObjects() {
       {data && (
         <>
           <Roles dbClusterRoles={data.roles} />
-          <DataBases clusterDbs={data.dataBases} />
+          <DataBases clusterDbs={data.dataBases} initDb={targetDb} />
         </>
       )}
     </section>
   )
 }
 
-function getData(targetDb: string, query: string) {
+function getAndSetData(targetDb: string, query: string, setDisplay: (a: any)=>void, displayType: string) {
   return fetch("http://localhost:4900/query-table", {
     headers: {
       "Content-Type": "application/json"
@@ -50,6 +50,14 @@ function getData(targetDb: string, query: string) {
     credentials: "include",
     method: "POST",
     body: JSON.stringify({targetDb, query}) // TODO: limit the amount of data sent back
+  })
+  .then(response => response.json())
+  .then(responseBody => {
+    if (responseBody.errorMsg){
+      alert(responseBody.errorMsg)
+    }else {
+      setDisplay({type: displayType, data: responseBody.data})
+    }
   })
 }
 
@@ -60,34 +68,16 @@ function getData(targetDb: string, query: string) {
 
   Is the way below the best way to actually do conditional rendering?
 */
-function TableInfo({tableName}:{tableName: string}) {
+function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: string}}) {
   const [display, setDisplay] = useState({type: "root", data: null})
-  const targetDb = useContext(TargetDb);
-
+  const {targetDb, tableName} = tableDetails;
   function displayRows() { 
-    getData(targetDb, `SELECT * FROM ${tableName};`)
-    .then(response => response.json())
-    .then(responseBody => {
-      if (responseBody.errorMsg){
-        alert(responseBody.errorMsg)
-      }else {
-        setDisplay({type: "table-rows", data: responseBody.data})
-      }
-    }) 
+    getAndSetData(targetDb, `SELECT * FROM ${tableName};`, setDisplay, "table-rows")
   }
 
   function displayColumns() {
-    console.log(tableName);
-    getData(targetDb, `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}';`)
-    .then(response => response.json())
-    .then(responseBody => {
-      if (responseBody.errorMsg){
-        alert(responseBody.errorMsg)
-      }else {
-        console.log(responseBody.data);
-        setDisplay({type: "table-columns", data: responseBody.data})
-      }
-    })
+    const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}';`
+    getAndSetData(targetDb, query, setDisplay, "table-columns")
   }
   return (
     <section>
@@ -108,16 +98,17 @@ function TableInfo({tableName}:{tableName: string}) {
   )
 }
 
-export default function Main() {
+export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: () => void, dbName: string}) {
   // const [tableData, setTableData] = useState(null);
-  const [displayInfo, setDisplayInfo] = useState({type: "", data: null})
+  const [displayInfo, setDisplayInfo] = useState<{type: string, data: any}>({type: "", data: null})
+  console.log(displayInfo.data, 99);
   return (
-    <DataDisplay.Provider value={setDisplayInfo}>
-      <ClusterLevelObjects />
-      {displayInfo.type === "create-table-form" && <CreateTable/>}
-      {displayInfo.type === "table-info" && <TableInfo tableName={displayInfo.data}/>}
+    <DataDisplayFn.Provider value={setDisplayInfo}>
+      <ClusterLevelObjects displayDbForm={showDbConnectForm} targetDb={dbName} />
+      {displayInfo.type === "create-table-form" && <CreateTable targetDb={dbName}/>}
+      {displayInfo.type === "table-info" && <TableInfo tableDetails={displayInfo.data} />}
       {/*displayInfo.type === "table-data" && <TableDisplay tableData={displayInfo.data} /> */}
-    </DataDisplay.Provider>
+    </DataDisplayFn.Provider>
   )
 }
 

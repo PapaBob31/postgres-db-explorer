@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import { useRef } from "react"
 
 async function connectDb(urlParams) {
@@ -30,9 +29,8 @@ function serializeForm(elem) {
 	return urlParamsObj
 }
 
-export default function ConnectDbForm() {
+export default function ConnectDbForm({setDbDetails} : {setDbDetails: (dbName: string) => void}) {
 	const formRef = useRef(null)
-	const navigate = useNavigate()
 
 	async function connect(event) {
 		event.preventDefault()
@@ -41,7 +39,7 @@ export default function ConnectDbForm() {
 		if (!response) return;
 
 		if (response.ok) {
-			navigate("/", {state: urlParams.dbname});
+			setDbDetails(urlParams.dbname);
 		}else {
 			alert("Invalid connection string")
 		}

@@ -1,6 +1,5 @@
 import { useState, useEffect, createContext, useRef, useContext } from "react"
-import { useLocation } from "react-router-dom";
-import { DataDisplay } from "./dbDataDisplay"
+import { DataDisplayFn } from "./dbDataDisplay"
 export const TargetDb = createContext("")
 
 function TableHeader({ headersList } : {headersList : string[]}) {
@@ -25,13 +24,15 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
 }
 
 function SchemaTables({tableList} : {tableList: string[]}) {
-  const setDisplayData = useContext(DataDisplay);
-
+  const setDisplayData = useContext(DataDisplayFn);
+  const targetDb = useContext(TargetDb);
   return (
     <ul>
       {tableList.map(tableName => (
         <li key={tableName}>
-          <button className="table-btn" onClick={()=>setDisplayData({type: "table-info", data: tableName})}>
+          <button className="table-btn" onClick={()=>{
+            setDisplayData({type: "table-info", data: {targetDb, tableName}})}
+          }>
             {tableName}
           </button>
         </li>)
@@ -42,7 +43,7 @@ function SchemaTables({tableList} : {tableList: string[]}) {
 
 function Schema({name, tableList}: {name: string, tableList: string[]}) {
   const [visible, setVisible] = useState(false);
-  const setDisplayData = useContext(DataDisplay);
+  const setDisplayData = useContext(DataDisplayFn);
 
   return (
     <>
@@ -117,11 +118,10 @@ function DataBase({dbName, initDb}: {dbName: string, initDb: string}) {
 }
 
 
-export function DataBases({clusterDbs}:{clusterDbs: string[]}) {
-  let initialConnectedDb = useLocation().state; // look into it. It seems to persist data across sessions
+export function DataBases({clusterDbs, initDb}:{clusterDbs: string[], initDb: string}) {
   const listItems = [];
   for (let dbName of clusterDbs) {
-    listItems.push(<DataBase dbName={dbName} key={dbName} initDb={initialConnectedDb}/>)
+    listItems.push(<DataBase dbName={dbName} key={dbName} initDb={initDb}/>)
   }
   return (
     <section id="cluster-dbs">

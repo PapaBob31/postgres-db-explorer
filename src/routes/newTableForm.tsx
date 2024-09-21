@@ -1,28 +1,64 @@
 import { useState, useRef, useContext } from "react"
-import { useLocation } from "react-router-dom";
-import { DataDisplay } from "./dbDataDisplay";
+import { DataDisplayFn } from "./dbDataDisplay";
 
-function generateQuery(formElement: HTMLFormElement) {
-    const tableName = formElement.getElementById("table-name")
-    let columnDetails = "";
-    const columnContainers = formElement.querySelectorAll("div")
-
-    columnContainers.forEach(columnComponent => {
-      let name = (columnComponent.querySelector("input[name='column-name']") as HTMLInputElement).value;
-      let dataType = (columnComponent.querySelector("select") as HTMLSelectElement).value;
-      let constraints = (columnComponent.querySelector("input[name='constraints']") as HTMLInputElement).value;
-      let defaultValue = (columnComponent.querySelector("input[name='default-value']") as HTMLInputElement).value;
-      if (columnDetails) // column Details already has the string content for some columns already
-        columnDetails += ','
-      if (defaultValue)
-        columnDetails += `${name} ${dataType} ${constraints} DEFAULT ${defaultValue} `
-      else
-        columnDetails += `${name} ${dataType} ${constraints}`;
-    })
-
-    return `CREATE TABLE IF NOT EXISTS ${tableName} (${columnDetails});`
+function Column(){
+  let postgreSqlTypes = [
+    "bigint", "bit", "bit varying", "boolean", "char", "character varying", "character",
+    "varchar", "date", "double precision", "integer", "interval", "numeric", "decimal",
+    "real", "smallint", "time", "timestamp", "xml", "smallserial", "serial", "bigserial",
+    "text", "bytea", "timestamp", "date", "time", "interval", "timestamptz", "boolean", "enum",
+    "points", "lines", "line segments", "boxes", "paths", "polygons", "circles", "inet", "cidr",
+    "macaddr", "macaddr8", "tsquery", "tsvector", "uuid", "xml", "json", "jsonb", "Array", 
+    "composite types", "ranges", "domain types", "oids", "pg_lsn", "pseudo types"
+  ]
+  let htmlOptionElems = postgreSqlTypes.map((option) => <option>{option}</option>)
+  return (
+    <div>
+      <select>
+       {htmlOptionElems}
+      </select>
+      <input type="text"/>
+    </div>
+  )
 }
 
+function getColumnDetails(container: HTMLDivElement) {
+  let columnDetails = "";
+  for (let i=0; i<container.children.length; i++) {
+    let formControl = container.children.item(i) as HTMLInputElement;
+    if (!formControl.value) {
+      continue;
+    }
+    if (formControl.nodeName === "INPUT" && formControl.name === "column-name") {
+      columnDetails += `"${formControl.value}"`
+    }else if (formControl.nodeName === "SELECT" && formControl.name === "data-type") {
+      columnDetails += ` ${formControl.value}`
+    }else if (formControl.nodeName === "INPUT" && formControl.name === "default-value") {
+      columnDetails += ` DEFAULT "${formControl.value}"`
+    }else if (formControl.nodeName === "INPUT" && formControl.name === "constraints") {
+      columnDetails += ` ${formControl.value}"`
+    }
+  }
+  return columnDetails;
+}
+
+function generateQuery(formElement: HTMLFormElement) {
+    let tableName = "";
+    let columnDetails = "";
+
+    for (let childNode of formElement.children) {
+      if (childNode.nodeName === "INPUT" && (childNode as HTMLInputElement).name === "table-name") {
+        tableName = (childNode as HTMLInputElement).value;
+      }
+      if (childNode.nodeName === "DIV") {
+        if (columnDetails)
+          columnDetails += ', ';
+        columnDetails += getColumnDetails(childNode as HTMLDivElement)
+      }
+    }
+
+    return [tableName, `CREATE TABLE IF NOT EXISTS ${tableName} (${columnDetails});`]
+}
 
 function ColumnDetailsForm({renderKey, removeColumn} : {renderKey: number, removeColumn: (key: number)=>void}) {
    /*columns
@@ -37,7 +73,7 @@ function ColumnDetailsForm({renderKey, removeColumn} : {renderKey: number, remov
     <label htmlFor="column-name"><b>Column name</b></label>
     <input type="text" name="column-name" id="column-name" required />
     <label htmlFor="data-type"><b>Data type</b></label>
-    <select required id="data-type"> {/*only support three basic data types for now*/}
+    <select required id="data-type" name="data-type"> {/*only support three basic data types for now*/}
       <option>integer</option>
       <option>numeric</option>
       <option>text</option>
@@ -53,21 +89,20 @@ function ColumnDetailsForm({renderKey, removeColumn} : {renderKey: number, remov
 }
 
 
-export function CreateTable() {
+export function CreateTable({targetDb}: {targetDb: string}) {
   let [columnKeys, setColumnKeys] = useState<number[]>([]); // free keys for rendering column components
   const freeColumnKeys = useRef([1]);
   const formRef = useRef<HTMLFormElement>(null);
-  const setDisplayData = useContext(DataDisplay)
+  const setDisplayData = useContext(DataDisplayFn)
 
   function createTable(event) {
     event.preventDefault();
-    const query = generateQuery(formRef.current as HTMLFormElement);
-    let initialConnectedDb = useLocation().state;
+    const [newTableName, query] = generateQuery(formRef.current as HTMLFormElement);
     fetch("http://localhost:4900/create-table", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({targetDb: initialConnectedDb, query}) 
+      body: JSON.stringify({targetDb, query}) 
     })
     .then(response => response.json())
     .then(responseBody => {
@@ -75,30 +110,31 @@ export function CreateTable() {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
         alert("Successful")
-        setDisplayData({type: "table-info", data: responseBody.data})
+        setDisplayData({type: "table-info", data: {tableName: newTableName, targetDb}})
       }
     })
   }
 
   function addNewColumn() {
-    if (freeColumnKeys.current.length > 1) {
-        setColumnKeys([...columnKeys, freeColumnKeys.current.pop() as number])
-    }else {
-      setColumnKeys([...columnKeys, freeColumnKeys.current.pop() as number])
-      freeColumnKeys.current.push(columnKeys.length+1);
-    }
+    let newColumnKeys:number[] = [...columnKeys, freeColumnKeys.current.pop() as number]
+
+    if (freeColumnKeys.current.length === 0)
+      freeColumnKeys.current.push(newColumnKeys.length+1);
+    setColumnKeys(newColumnKeys);
   }
+
   function removeColumn(renderKey: number) {
       setColumnKeys(columnKeys.filter((key) => key !== renderKey))
       freeColumnKeys.current.push(renderKey);
   }
+
   return (
     <form ref={formRef} onSubmit={createTable}>
       <h2>Table Name:</h2>
       <input name="table-name" id="table-name" type="text" required />
       <h3>Columns</h3>
       {columnKeys.map(key => <ColumnDetailsForm key={key} renderKey={key} removeColumn={removeColumn}/>)}
-      <button type="button" onClick={() => addNewColumn}>Add Column</button>
+      <button type="button" onClick={() => addNewColumn()}>Add Column</button>
       <button type="submit">Create Table</button>
     </form>
   )
