@@ -61,6 +61,14 @@ function getAndSetData(targetDb: string, query: string, setDisplay: (a: any)=>vo
   })
 }
 
+function InsertForm() {
+  return (
+    <form>
+      
+    </form>
+  )
+}
+
 /*
   Displays columns and rows 
   under the column section, you can do things like alter column, add column but with a gui
@@ -72,7 +80,7 @@ function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: s
   const [display, setDisplay] = useState({type: "root", data: null})
   const {targetDb, tableName} = tableDetails;
   function displayRows() { 
-    getAndSetData(targetDb, `SELECT * FROM ${tableName};`, setDisplay, "table-rows")
+    getAndSetData(targetDb, `SELECT * FROM "${tableName}";`, setDisplay, "table-rows") // will these quotes affect case sensitivity?
   }
 
   function displayColumns() {
@@ -81,10 +89,11 @@ function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: s
   }
   return (
     <section>
+    <h1>{tableName}</h1>
     {display.type !== "root" && (
       <nav>
         <button onClick={()=>setDisplay({type: "root", data: null})}>root</button> 
-        <button>{display.type}</button>
+        <button disabled>{display.type}</button>
       </nav>
     )}
      {display.type === "root" && (
@@ -101,7 +110,6 @@ function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: s
 export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: () => void, dbName: string}) {
   // const [tableData, setTableData] = useState(null);
   const [displayInfo, setDisplayInfo] = useState<{type: string, data: any}>({type: "", data: null})
-  console.log(displayInfo.data, 99);
   return (
     <DataDisplayFn.Provider value={setDisplayInfo}>
       <ClusterLevelObjects displayDbForm={showDbConnectForm} targetDb={dbName} />
@@ -114,10 +122,12 @@ export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: 
 
 
 /*
+  Change data fetching mechanism to tan stack query or react query
   Implement checking if a table exists before query incase a 
   previously existing table has been deleted outside the guis
   maybe put some state update logic inside a reducer
   try setting an identifier name to exceed the NAMEDATALEN limit in the gui
   quoted identifier
   single quotes delimit string constants
+  when writing the insert interface, try and check data types like character varying for correctness before sending it off to the server
 */
