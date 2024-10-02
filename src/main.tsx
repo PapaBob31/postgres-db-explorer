@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, StrictMode } from "react"
 // import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -22,6 +22,7 @@ function Main(){
 
 // Handle strict mode effect of causing double requests to database
 createRoot(document.getElementById('root')!).render(
-   // making alot of requests and strict mode is doubling the load
-   <Main />
+   <StrictMode>
+     <Main />
+   </StrictMode>
 )
