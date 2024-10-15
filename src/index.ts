@@ -57,6 +57,7 @@ async function processReq(connectionStr, sqlQuery) {
 	let data = null;
 	try {
 		data = await client.query(sqlQuery);
+		// console.log(data);
 		return {errorMsg: null, data};
 	}catch(error) {
 		console.log(error)
@@ -80,27 +81,27 @@ async function getDbDetails(connectionStr) {
 
 	try { // fix double table bug
 		let schemaData = await client.query(
-			"SELECT schema_name, table_name FROM information_schema.tables, information_schema.schemata WHERE schema_name = information_schema.tables.table_schema;"
+			"SELECT table_schema, table_name FROM information_schema.tables;"
 			);
 		const schemaNameKey = schemaData.fields[0].name;
 		const tableNameKey = schemaData.fields[1].name;
 
+		// Array of key-value pairs where key is a schema name and 
+		// value is an array of the names of the tables present in the schema
 		const data: {name: string, tables: string[]}[] = [];
 
 		for (let i=0; i<schemaData.rows.length; i++) {
-			if (data.length === 0) {
-				data.push({name: schemaData.rows[i][schemaNameKey], tables: [schemaData.rows[i][tableNameKey]]})
-				continue;
-			}
+			let schemaObj: {name: string, tables: string[]} = null;
 			for (let j=0; j<data.length; j++) {
 				if (data[j].name === schemaData.rows[i][schemaNameKey]) {
-					data[j].tables.push(schemaData.rows[i][tableNameKey])
+					schemaObj = data[j];
 					break;
 				}
-				if (j === data.length-1) {
-					data.push({name: schemaData.rows[i][schemaNameKey], tables: [schemaData.rows[i][tableNameKey]]})
-				}
 			}
+			if (!schemaObj) {
+				schemaObj = {name: schemaData.rows[i][schemaNameKey], tables: [schemaData.rows[i][tableNameKey]]};
+				data.push(schemaObj);
+			}else schemaObj.tables.push(schemaData.rows[i][tableNameKey])
 		}
 		
 		return {errorMsg: null, data};
@@ -119,17 +120,17 @@ app.post("/create-table", async (req, res) => {
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
 	}else {
-		res.status(200).json({tableName: "", errorMsg: null})
+		res.status(200).json({data: "", errorMsg: null})
 	}
 })
 
 app.post("/query-table", async (req, res) => {
 	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	// console.log(req.body.query, 'tf?: ', req.body.targetDb, ' :?tf')
 	const results = await processReq(connectionStr, req.body.query)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
 	}else {
-		console.log(results.data.rows)
 		const processedData = {rows: results.data.rows, fields: results.data.fields.map(field => field.name)};
 		res.status(200).json({errorMsg: null, data: processedData})
 	}
