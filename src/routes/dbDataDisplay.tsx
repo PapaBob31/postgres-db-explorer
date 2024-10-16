@@ -76,15 +76,17 @@ function InsertForm() {
 
   Is the way below the best way to actually do conditional rendering?
 */
-function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: string}}) {
+function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}}) {
   const [display, setDisplay] = useState({type: "root", data: null})
-  const {targetDb, tableName} = tableDetails;
-  function displayRows() { 
-    getAndSetData(targetDb, `SELECT * FROM "${tableName}";`, setDisplay, "table-rows") // will these quotes affect case sensitivity?
+  const {targetDb, tableName, schemaName} = tableDetails;
+  function displayRows() {
+    const qualifiedTableName = `"${schemaName}"."${tableName}"`;
+    // console.log("qualifiedTableName", qualifiedTableName);
+    getAndSetData(targetDb, `SELECT * FROM ${qualifiedTableName};`, setDisplay, "table-rows")
   }
 
   function displayColumns() {
-    const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}';`
+    const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
     getAndSetData(targetDb, query, setDisplay, "table-columns")
   }
   return (

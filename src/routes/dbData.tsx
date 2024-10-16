@@ -23,15 +23,15 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
   return <tbody>{rows}</tbody>
 }
 
-function SchemaTables({tableList} : {tableList: string[]}) {
+function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: string[]}}) {
   const setDisplayData = useContext(DataDisplayFn);
   const targetDb = useContext(TargetDb);
   return (
     <ul>
-      {tableList.map(tableName => (
+      {schemaDetails.tables.map(tableName => (
         <li key={tableName}>
           <button className="table-btn" onClick={()=>{
-            setDisplayData({type: "table-info", data: {targetDb, tableName}})}
+            setDisplayData({type: "table-info", data: {targetDb, tableName, schemaName: schemaDetails.name}})}
           }>
             {tableName}
           </button>
@@ -41,16 +41,17 @@ function SchemaTables({tableList} : {tableList: string[]}) {
   )
 }
 
-function Schema({name, tableList}: {name: string, tableList: string[]}) {
+function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]}}) {
   const [visible, setVisible] = useState(false);
   const setDisplayData = useContext(DataDisplayFn);
 
+
   return (
     <>
-      <button onClick={() => setVisible(!visible)}>{name}</button>
+      <button onClick={() => setVisible(!visible)}>{schemaDetails.name}</button>
       {visible && (
         <>
-          <SchemaTables tableList={tableList}/>
+          <SchemaTables schemaDetails={schemaDetails}/>
           <button id="add-table-btn" onClick={() => setDisplayData({type: "create-table-form", data: null})}>Add Table</button>
         </>)
       }
@@ -107,7 +108,7 @@ function DataBase({dbName, initDb}: {dbName: string, initDb: string}) {
             {schemas.current.map(
               (schema) => (
                 <li key={schema.name}>
-                  <Schema name={schema.name} tableList={schema.tables} />
+                  <Schema schemaDetails={schema} />
                 </li>
             ))}
           </ul>
