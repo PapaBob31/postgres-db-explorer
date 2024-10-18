@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext } from "react"
+import { useState, useEffect, createContext, useRef } from "react"
 import { DataBases, Roles, TableDisplay } from "./dbData"
 import { CreateTable } from "./newTableForm";
 // import { TargetDb } from "./dbData"
@@ -42,7 +42,7 @@ function ClusterLevelObjects({ displayDbForm, targetDb }: {displayDbForm: () => 
   )
 }
 
-function getAndSetData(targetDb: string, query: string, setDisplay: (a: any)=>void, displayType: string) {
+function getData(targetDb: string, query: string) {
   return fetch("http://localhost:4900/query-table", {
     headers: {
       "Content-Type": "application/json"
@@ -50,23 +50,145 @@ function getAndSetData(targetDb: string, query: string, setDisplay: (a: any)=>vo
     credentials: "include",
     method: "POST",
     body: JSON.stringify({targetDb, query}) // TODO: limit the amount of data sent back
-  })
-  .then(response => response.json())
-  .then(responseBody => {
-    if (responseBody.errorMsg){
-      alert(responseBody.errorMsg)
-    }else {
-      setDisplay({type: displayType, data: responseBody.data})
-    }
-  })
+  }).then(response => response.json())
 }
 
-function InsertForm() {
+function setDisplayData(data: any, setDisplay: (a: any)=>void, displayType: string) {
+  if (data.errorMsg){
+      alert(data.errorMsg)
+  }else {
+    setDisplay({type: displayType, data: data.data})
+  }
+}
+
+function getInputDetails(container: HTMLDivElement) {
+  let inputMappings: any = {};
+  for (let childNode of container.children) {
+    if ((childNode as HTMLElement).nodeName !== "INPUT")
+      continue;
+    let inputElement = childNode as HTMLInputElement;
+    if (inputElement.type === "text"){
+      inputMappings[inputElement.name] = `'${inputElement.value}'`
+    }else inputMappings[inputElement.name] = inputElement.value;
+  }
+  return inputMappings;
+}
+
+function generateQueryFrom(tableName:string, formElement: HTMLFormElement, columnNames: string[]) { // Add strong measures against sql injections
+  let newRowsData: {columnName: string}[] = []
+  let rowValuesText = ""
+
+  for (let childNode of formElement.children) {
+    if (childNode.nodeName === "DIV") {
+      newRowsData.push(getInputDetails(childNode as HTMLDivElement));
+    }
+  }
+
+  for (let entry of newRowsData) {
+    if (rowValuesText){
+      rowValuesText += ", ("
+    }else rowValuesText += '('
+
+    for (let i=0; i<columnNames.length; i++) {
+      if (i === columnNames.length-1)
+        rowValuesText += entry[columnNames[i]]
+      else
+        rowValuesText += (entry[columnNames[i]] + ', ')
+    }
+    rowValuesText += ')'
+  }
+
+  let targetColumnsText = "";
+  columnNames.forEach((name, i) => {
+    if (i === 0)
+      targetColumnsText += `"${name}"`;
+    else
+      targetColumnsText += `, "${name}"`;
+  })
+  return `INSERT INTO "${tableName}" (${targetColumnsText}) VALUES ${rowValuesText};`
+}
+
+function NewRowInput({columns, id, removeRowInput}: {columns: {column_name: string, data_type: string}[], id: number, removeRowInput: (num: number)=>void}) {
+  return <div>{
+    columns.map((columnDetails) => {
+    const {column_name, data_type} = columnDetails;
+    let inputType = "text"
+    let numericTypes = ["bigint", "integer", "smallint", "numeric", "real", "double precision", "serial"]; // int2, int4, int8 ?
+
+    if (numericTypes.includes(data_type))
+      inputType = "number";
+
+    return (
+      <>
+        <label htmlFor={column_name} key={column_name}>{column_name}</label>
+        <input name={column_name} type={inputType} placeholder={data_type}/> {/*Change the input type for data types like boolean*/}
+      </>
+    )})
+  }
+    <button onClick={() => removeRowInput(id)}>X</button>
+  </div>
+}
+
+function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}}) {
+  const [columnData, setColumnData] = useState<any>(null);
+  const {targetDb, tableName, schemaName} = tableDetails;
+  const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
+  const [insertRowKeys, setInsertRowKeys] = useState<number[]>([1]);
+  const freeKeys = useRef<number[]>([]);
+
+  useEffect(() => {
+    getData(targetDb, query)
+    .then(responseData => setColumnData(responseData.data))
+  }, [])
+
+  function removeRowInput(rowKey: number) {
+    setInsertRowKeys(insertRowKeys.filter((key)=>key!==rowKey));
+    freeKeys.current.push(rowKey);
+  }
+
+  function addNewRowInput() {
+    let newKey = -1;
+    if (freeKeys.current.length > 0) {
+      newKey = freeKeys.current.pop() as number;
+    }else {
+      newKey = Math.max(...insertRowKeys)+1;
+    }
+    setInsertRowKeys([...insertRowKeys, newKey]);
+  }
+
+  function insertDataIntoTable(event) {
+    event.preventDefault();
+    const form = event.target;
+    const query = generateQueryFrom(tableName, form, columnData.rows.map(column => column.column_name));
+    fetch("http://localhost:4900/mutate-dbData", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      body: JSON.stringify({targetDb, query, queryType: "insert"}) 
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        alert(`${responseBody.errorMsg} Please try again!`)
+      }else {
+        alert(`${responseBody.rowCount} new rows uploaded successfully!`)
+        changeDisplay({type: "table-info", data: {...tableDetails}})
+      }
+    })
+  }
+
   return (
-    <form>
-      
-    </form>
-  )
+    <>
+      <em>Maybe empty columns will be replaced with defaults</em>
+      {columnData ? (
+        <form onSubmit={insertDataIntoTable}>
+          {insertRowKeys.map((key) => <NewRowInput columns={columnData.rows} key={key} id={key} removeRowInput={removeRowInput}/>)}
+          <button onClick={addNewRowInput} type="button">Add</button>
+          <button type="submit">Insert</button>
+        </form>
+      ) : <h2>Loading...</h2>}
+    </>
+  )   
 }
 
 /*
@@ -76,18 +198,21 @@ function InsertForm() {
 
   Is the way below the best way to actually do conditional rendering?
 */
-function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}}) {
-  const [display, setDisplay] = useState({type: "root", data: null})
+function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}, displayType: string}) {
+  const [display, setDisplay] = useState({type: displayType, data: null})
   const {targetDb, tableName, schemaName} = tableDetails;
   function displayRows() {
     const qualifiedTableName = `"${schemaName}"."${tableName}"`;
-    // console.log("qualifiedTableName", qualifiedTableName);
-    getAndSetData(targetDb, `SELECT * FROM ${qualifiedTableName};`, setDisplay, "table-rows")
+    // Get the details from the db everytime as values may have changed since the last time you checked
+    getData(targetDb, `SELECT * FROM ${qualifiedTableName};`)
+    .then(responseData => setDisplayData(responseData, setDisplay, "table-rows"));
   }
 
   function displayColumns() {
+    // Get the details from the db everytime as values may have changed since the last time you checked
     const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
-    getAndSetData(targetDb, query, setDisplay, "table-columns")
+    getData(targetDb, query)
+    .then(responseData => setDisplayData(responseData, setDisplay, "table-columns"));
   }
   return (
     <section>
@@ -103,8 +228,9 @@ function TableInfo({tableDetails}:{tableDetails: {tableName: string, targetDb: s
         <button onClick={()=>displayColumns()}>Columns</button> 
         <button onClick={()=>displayRows()}>Rows</button>
       </ul>)}
-     {display.type === "table-rows" && <TableDisplay tableData={display.data as any}/>}
-     {display.type === "table-columns" && <TableDisplay tableData={display.data as any}/>}
+     {display.type === "table-rows" && <TableDisplay tableData={display.data as any} changeDisplay={setDisplay}/>}
+     {display.type === "table-columns" && <TableDisplay tableData={display.data as any} changeDisplay={setDisplay}/>}
+     {display.type === "insert-form" && <InsertForm tableDetails={tableDetails} changeDisplay={setDisplay}/>}
     </section>
   )
 }
@@ -116,7 +242,8 @@ export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: 
     <DataDisplayFn.Provider value={setDisplayInfo}>
       <ClusterLevelObjects displayDbForm={showDbConnectForm} targetDb={dbName} />
       {displayInfo.type === "create-table-form" && <CreateTable targetDb={dbName}/>}
-      {displayInfo.type === "table-info" && <TableInfo tableDetails={displayInfo.data} />}
+      {displayInfo.type === "table-info" && <TableInfo tableDetails={displayInfo.data} displayType={"root"}/>}
+      {displayInfo.type === "insert-form" && <TableInfo tableDetails={displayInfo.data} displayType={"insert-form"}/>}
       {/*displayInfo.type === "table-data" && <TableDisplay tableData={displayInfo.data} /> */}
     </DataDisplayFn.Provider>
   )

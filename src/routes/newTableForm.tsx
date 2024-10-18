@@ -18,24 +18,20 @@ function getDefaultValue(text: string, columnType: string) {
   return text
 }
 
-function Column(){
+function DataTypeOptions(){
   let postgreSqlTypes = [
     "bigint", "bit", "bit varying", "boolean", "char", "character varying", "character",
-    "varchar", "date", "double precision", "integer", "interval", "numeric", "decimal",
-    "real", "smallint", "time", "timestamp", "xml", "smallserial", "serial", "bigserial",
-    "text", "bytea", "timestamp", "date", "time", "interval", "timestamptz", "boolean", "enum",
-    "points", "lines", "line segments", "boxes", "paths", "polygons", "circles", "inet", "cidr",
-    "macaddr", "macaddr8", "tsquery", "tsvector", "uuid", "xml", "json", "jsonb", "Array", 
-    "composite types", "ranges", "domain types", "oids", "pg_lsn", "pseudo types"
+    "varchar", "date", "double precision", "integer", "numeric", "decimal", "domain types",
+    "real", "smallint", "timestamp", "smallserial", "serial", "bigserial", "line segments",
+    "text", "bytea", "time", "interval", "timestamptz", "enum", "points", "lines", "boxes",
+    "paths", "polygons", "circles", "inet", "cidr", "macaddr", "macaddr8", "tsquery", "oids", "money",
+    "uuid", "xml", "json", "jsonb", "Array",  "tsvector", "composite types", "ranges", "pg_lsn", "pseudo types"
   ]
-  let htmlOptionElems = postgreSqlTypes.map((option) => <option>{option}</option>)
+  let htmlOptionElems = postgreSqlTypes.map((option) => <option key={option}>{option}</option>)
   return (
-    <div>
-      <select>
-       {htmlOptionElems}
-      </select>
-      <input type="text"/>
-    </div>
+    <>
+      {htmlOptionElems}
+    </>
   )
 }
 
@@ -87,6 +83,12 @@ function generateQuery(formElement: HTMLFormElement) {
     return [tableName, `CREATE TABLE IF NOT EXISTS ${escapeSQLCharacters(tableName)} (${columnDetails});`]
 }
 
+function numericParams() {
+  return (
+    <></>
+  )
+}
+
 function ColumnDetailsForm({renderKey, removeColumn} : {renderKey: number, removeColumn: (key: number)=>void}) {
    /*columns
       [name type default value] [constraints+]+
@@ -95,13 +97,22 @@ function ColumnDetailsForm({renderKey, removeColumn} : {renderKey: number, remov
 
     default values can be expressions that returns a value rather than being just a value
     check constraints that evaluate to null are taken to be true*/
-  const [charNumInput, setCharNumInputVisible] = useState(false);
+  const [extraParamsType, setExtraParamsType] = useState("");
 
-  function showCharNumInput(event) {
+  const extraInputComponents = { 
+    "character varying": <input max={10485760} type="number" name="char-length" placeholder="n"/>,
+    "character": <input max={10485760} type="number" name="char-length" placeholder="n"/>,
+    // warn users about negative scale not being portable and check if these are the proper max and min scales
+    "numeric": <><input max={1000} min={-1000} type="number" name="precision"/><input max={1000} min={-1000} type="number" name="scale"/></>,
+    // Get all the enum types first
+  }
+
+  function displayOptTypeParams(event) {
     let dataType: string = event.target.value
-    if (dataType === "character varying" || dataType === "character") {
-      setCharNumInputVisible(true)
-    }else setCharNumInputVisible(false)
+    if (extraInputComponents[dataType]) {
+      setExtraParamsType(dataType);
+    }
+    setExtraParamsType("");
   }
 
   return (
@@ -109,14 +120,10 @@ function ColumnDetailsForm({renderKey, removeColumn} : {renderKey: number, remov
     <label htmlFor="column-name"><b>Column name</b></label>
     <input type="text" name="column-name" id="column-name" required />
     <label htmlFor="data-type"><b>Data type</b></label>
-    <select required id="data-type" name="data-type" onChange={showCharNumInput}> {/*only support few data types for now*/}
-      <option>integer</option>
-      <option>numeric</option>
-      <option>text</option>
-      <option>character varying</option>
-      <option>character</option>
+    <select required id="data-type" name="data-type" onChange={displayOptTypeParams}>
+      <DataTypeOptions/>
     </select>
-    {charNumInput && <input max={10485760} type="number" name="char-length"/>}
+    {extraParamsType && extraInputComponents[extraParamsType]}
     <label htmlFor="default-value">Default value:</label>
     <input type="text" name="default-value" id="default-value" />
     <label htmlFor="constraints"><b>Constraints</b></label>
@@ -137,11 +144,11 @@ export function CreateTable({targetDb}: {targetDb: string}) {
     event.preventDefault();
     const [newTableName, query] = generateQuery(formRef.current as HTMLFormElement);
     console.log(query);
-    fetch("http://localhost:4900/create-table", {
+    fetch("http://localhost:4900/mutate-dbData", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({targetDb, query}) 
+      body: JSON.stringify({targetDb, query, queryType: "create"}) 
     })
     .then(response => response.json())
     .then(responseBody => {

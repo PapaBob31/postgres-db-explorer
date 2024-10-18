@@ -15,7 +15,7 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
   let rowData:any[] = [];
   data.forEach(entity => {
     for (let i=0; i<headersList.length; i++) {
-      rowData.push(<td key={i}>{entity[headersList[i]]}</td>)
+      rowData.push(<td key={i}>{entity[headersList[i]]}</td>) // empty cells??
     }
     rows.push(<tr>{rowData}</tr>);
     rowData = [];
@@ -23,20 +23,46 @@ function TableBody({ headersList, data } : { headersList: string[], data: any[] 
   return <tbody>{rows}</tbody>
 }
 
-function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: string[]}}) {
-  const setDisplayData = useContext(DataDisplayFn);
+function Table({schemaName, tableName, setVisibleMenu, visibleMenu}:{schemaName: string, tableName: string, setVisibleMenu: (menu: string)=>void, visibleMenu: string}) {
   const targetDb = useContext(TargetDb);
+  const setDisplayData = useContext(DataDisplayFn);
+
+  return (
+    <li key={tableName} className="db-table-rep">
+      <button className="db-table-btn" onClick={()=>{
+        setDisplayData({type: "table-info", data: {targetDb, tableName, schemaName}})}
+      }>
+        {tableName}
+      </button>
+      <button onClick={(event)=>{
+        event.stopPropagation();
+        setVisibleMenu(visibleMenu === tableName ? "" : tableName)
+      }}>...</button>
+
+      {visibleMenu === tableName && (
+        <div className="db-table-menu">
+          <button onClick={()=>setDisplayData({type: "insert-form", data: {targetDb, tableName, schemaName}})}>Insert</button>
+          <button>Delete</button>
+        </div>
+      )}
+    </li>
+  )
+}
+
+function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: string[]}}) {
+  const [displayedMenu, setDisplayedMenu] = useState("");
+  useEffect(() => {
+    function hideAnyVisibleMenu() {
+      setDisplayedMenu("false")
+    }
+    document.addEventListener("click", hideAnyVisibleMenu)
+    return () => document.removeEventListener("click", hideAnyVisibleMenu);
+  })
+  
   return (
     <ul>
-      {schemaDetails.tables.map(tableName => (
-        <li key={tableName}>
-          <button className="table-btn" onClick={()=>{
-            setDisplayData({type: "table-info", data: {targetDb, tableName, schemaName: schemaDetails.name}})}
-          }>
-            {tableName}
-          </button>
-        </li>)
-      )}
+      {schemaDetails.tables.map(tableName => <Table tableName={tableName} schemaName={schemaDetails.name} 
+        key={tableName} setVisibleMenu={setDisplayedMenu} visibleMenu={displayedMenu}/>)}
     </ul>
   )
 }
@@ -153,13 +179,17 @@ export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
   )
 }
 
-export function TableDisplay({tableData} : {tableData: GenericQueryData}) {  
- return (tableData && (
+export function TableDisplay({tableData, changeDisplay} : {tableData: GenericQueryData, changeDisplay: (displayDetails)=>void}) {
+
+ return (
   <section>
-     <h1>Tables Data</h1>
-     <table>
-      <thead><TableHeader headersList={tableData.fields} /></thead>
-      <TableBody headersList={tableData.fields} data={tableData.rows} />
-    </table>
-  </section>))
+    {tableData && (
+      <><h1>Tables Data</h1>
+      <table>
+        <thead><TableHeader headersList={tableData.fields} /></thead>
+        <TableBody headersList={tableData.fields} data={tableData.rows} />
+      </table></>
+    )}
+    <button onClick={() => changeDisplay({type: "insert-form", data: null})}>insert</button>
+  </section>)
 }
