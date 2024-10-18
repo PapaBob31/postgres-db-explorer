@@ -114,13 +114,16 @@ async function getDbDetails(connectionStr) {
 	}
 }
 
-app.post("/create-table", async (req, res) => {
+app.post("/mutate-dbData", async (req, res) => {
 	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
 	const results = await processReq(connectionStr, req.body.query);
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
 	}else {
-		res.status(200).json({data: "", errorMsg: null})
+		if (req.body.queryType === "insert")
+			res.status(200).json({rowCount: results.data.rowCount});
+		else
+			res.status(200).json({data: "", errorMsg: null})
 	}
 })
 
