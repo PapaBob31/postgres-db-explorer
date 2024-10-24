@@ -212,10 +212,10 @@ function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string
       )}
      {display === "root" && (
        <nav>
-        <button onClick={()=>setDisplay("table-columns")}>Columns</button> 
-        <button onClick={()=>setDisplay("table-rows")}>Rows</button>
+        <button onClick={()=>setDisplay("Table Columns")}>Columns</button> 
+        <button onClick={()=>setDisplay("Table Rows")}>Rows</button>
       </nav>)}
-     {display === "table-rows" && <TableDisplay tableDetails={tableDetails} changeDisplay={setDisplay} displayType={display}/>}
+     {(display === "Table Rows" || display === "Table Columns") && <TableDisplay tableDetails={tableDetails} changeDisplay={setDisplay} displayType={display}/>}
      {display === "insert-form" && <InsertForm tableDetails={tableDetails} changeDisplay={setDisplay}/>}
     </section>
   )

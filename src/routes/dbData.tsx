@@ -2,13 +2,43 @@ import { useState, useEffect, createContext, useRef, useContext } from "react"
 import { DataDisplayFn, getData } from "./dbDataDisplay"
 export const TargetDb = createContext("")
 
+// TODO: table details should just be in a context
+// Turn identifiers to quoted identifiers where appropriate
 
-function TablesWithSameColumnName({columnName, tablesData} : {tablesData: any, columnName: string}) {
-  return <>null</>
+function TablesWithSameColumnName({columnName, tablesData, updateDisplay, tableDetails} 
+  : {tablesData: GenericQueryData, columnName: string, updateDisplay: (data: Updater) => void, tableDetails: any}) {
 
+  let targetTables: JSX.Element[] = [];
+  function getAndUpdateData(targetTable: string) {
+    const query = `SELECT * FROM "${tableDetails.tableName}" INNER JOIN ${targetTable} USING("${columnName}");`
+    console.log(query);
+    getData(tableDetails.targetDb, query)
+    .then(response => {
+      if (!response.errorMsg) {
+        updateDisplay({displayName: `${tableDetails.tableName} INNER JOIN ${targetTable} USING ${columnName};`, data: response.data})
+      }else alert("Something Went wrong while querying the db! @ TablesWithSameColumnName")
+    })
+  }
+  for (let data of tablesData.rows) {
+    if (data["column_name"] === columnName && data["table_name"] !== tableDetails.tableName && !targetTables.includes(data["table_name"])) { // is this check efficient?
+      targetTables.push(
+        <li onClick={() => {updateDisplay({displayName: "loading", data: null}); getAndUpdateData(data["table_name"])}}>
+          {data["table_name"]}.{columnName}
+        </li>
+      )
+    }
+  }
+  if (targetTables.length === 0)
+    return null;
+  return <ul>{targetTables}</ul>
 }
 
-function TableHeader({ headersList, tablesData } : {headersList : string[], tablesData: any}) {
+interface Updater {
+  displayName: string
+  data: any
+}
+function TableHeader({ headersList, tablesData, updateDisplay, tableMetaData } : 
+  {headersList : string[], tablesData: GenericQueryData, updateDisplay: (data: Updater) => void, tableMetaData: any}) {
   const [displayedMenuColumn, setDislayedMenuColumn] = useState("");
   useEffect(() => {
     function hideAnyVisibleMenu() {
@@ -30,12 +60,15 @@ function TableHeader({ headersList, tablesData } : {headersList : string[], tabl
   let htmlElements = []; // come back to define the proper type
   for (let i=0; i<headersList.length; i++) {
     htmlElements.push(
-      <th key={i} onClick={(event) => {showColumnOptions(headersList[i]); event.stopPropagation();}}>
+      <th key={i} onClick={(event) => {showColumnOptions(headersList[i]); event.stopPropagation();}}>{/*Handle this event on columns that are part of a joined table*/}
         {headersList[i]}
         {displayedMenuColumn === headersList[i] && (
           <ul className="column-submenu">
-            <li>JOIN USING COLUMN</li>
-            <li>JOIN ON COLUMN</li>
+            <li>
+              INNER JOIN USING COLUMN &gt; 
+              <TablesWithSameColumnName columnName={displayedMenuColumn} tablesData={tablesData} tableDetails={tableMetaData} updateDisplay={updateDisplay}/>
+            </li>
+            <li>JOIN ON COLUMN &gt; </li>
           </ul>
         )}
       </th>
@@ -219,17 +252,6 @@ interface TableDetails {
   schemaName: string
 }
 
-function displayRows(setDisplayData: (data: any) => void, queryDetails: TableDetails) {
-  const {schemaName, tableName, targetDb} = queryDetails;
-  const qualifiedTableName = `"${schemaName}"."${tableName}"`;
-  // Get the details from the db everytime as values may have changed since the last time you checked
-  getData(targetDb, `SELECT * FROM ${qualifiedTableName};`)
-  .then(responseData => {
-    if (responseData.errorMsg)
-      alert("Error occurred while trying to query db!");
-    setDisplayData(responseData.data)});
-}
-
 function displayColumns(setDisplayData: (data: any) => void, queryDetails: TableDetails) {
   const {schemaName, tableName, targetDb} = queryDetails;
   // Get the details from the db everytime as values may have changed since the last time you checked
@@ -238,32 +260,48 @@ function displayColumns(setDisplayData: (data: any) => void, queryDetails: Table
   .then(responseData => {
     if (responseData.errorMsg)
       alert("Error occurred while trying to query db!");
-    setDisplayData(responseData.data)});
+    setDisplayData({displayName: "Table Columns", data: responseData.data})});
 }
 
 export function TableDisplay({changeDisplay, tableDetails, displayType} : {changeDisplay: (displayDetails)=>void, tableDetails: TableDetails, displayType: string}) {
-  const [displayData, setDisplayData] = useState<GenericQueryData|null>(null); // add display type on errors
-  const allTableDetails = useRef(null)
+  const [displayData, setDisplayData] = useState<{displayName: string, data: GenericQueryData}|null>(null); // add display type on errors
+  const allTableDetails = useRef<GenericQueryData|null>(null)
 
   useEffect(() => {
-    if (displayType === "table-columns"){
+    if (displayType === "Table Columns"){
       displayColumns(setDisplayData, tableDetails);
       return;
     }
-    displayRows(setDisplayData, tableDetails);
-    const query = `SELECT column_name, data_type, table_name, table_schema FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema = '${tableDetails.schemaName};'`
-    getData(tableDetails.targetDb, query)
-    .then(responseData => allTableDetails.current = responseData);
-  }, [])
+    const longQuery = `SELECT column_name, data_type, table_name, table_schema FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema = '${tableDetails.schemaName}';`
+    console.log(longQuery);
+    const qualifiedTableName = `"${tableDetails.schemaName}"."${tableDetails.tableName}"`;
+    Promise.all([getData(tableDetails.targetDb, `SELECT * FROM ${qualifiedTableName};`), getData(tableDetails.targetDb, longQuery)])
+    .then(values => {
+      if (values[0].errorMsg){
+        alert("Error occurred while trying to query db!");
+        // todo: set state for some kind of error
+        return
+      }else setDisplayData({displayName: "Table Rows", data: values[0].data})
+      if(!values[1].errorMsg) {
+        allTableDetails.current = values[1].data
+      }else alert("Error occurred while trying to query db! @ allTableDetails");
+    });
+  }, [displayType])
 
   return (
     <section>
-      {displayData ? (
+      {displayData && displayData.displayName !== "loading" ? (
         <>
-          <h1>Tables Data</h1>
+          <h1>{displayData.displayName}</h1>
           <table>
-            <thead><TableHeader headersList={displayData.fields} tablesData={allTableDetails.current} /></thead>
-            <TableBody headersList={displayData.fields} data={displayData.rows} />
+            <thead>
+              <TableHeader 
+                headersList={displayData.data.fields}
+                tableMetaData={tableDetails}
+                tablesData={allTableDetails.current as GenericQueryData}
+                updateDisplay={setDisplayData} />
+            </thead>
+            <TableBody headersList={displayData.data.fields} data={displayData.data.rows} />
           </table>
           <button onClick={() => changeDisplay({type: "insert-form", data: null})}>insert</button>
         </>
