@@ -66,6 +66,32 @@
         table-layout: auto;
       }
 
+      th {
+        position: relative;
+      }
+
+      th ul {
+        width: 15rem;
+        position: absolute;
+        padding: 5px 0;
+        border: 1px solid gray;
+        border-radius: 5px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        top: -10px;
+        left: 80%;
+        z-index: 1;
+        background-color: rgb(245, 245, 245);
+      }
+
+      th ul li {
+        padding: 5px;
+      }
+
+      th ul li:hover {
+        background-color: lightblue;
+      }
+
       thead, table th {
         border: 2px solid black;
       }
