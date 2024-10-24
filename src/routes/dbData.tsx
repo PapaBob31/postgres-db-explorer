@@ -1,11 +1,45 @@
 import { useState, useEffect, createContext, useRef, useContext } from "react"
-import { DataDisplayFn } from "./dbDataDisplay"
+import { DataDisplayFn, getData } from "./dbDataDisplay"
 export const TargetDb = createContext("")
 
-function TableHeader({ headersList } : {headersList : string[]}) {
+
+function TablesWithSameColumnName({columnName, tablesData} : {tablesData: any, columnName: string}) {
+  return <>null</>
+
+}
+
+function TableHeader({ headersList, tablesData } : {headersList : string[], tablesData: any}) {
+  const [displayedMenuColumn, setDislayedMenuColumn] = useState("");
+  useEffect(() => {
+    function hideAnyVisibleMenu() {
+      setDislayedMenuColumn("")
+    }
+    document.addEventListener("click", hideAnyVisibleMenu)
+    return () => document.removeEventListener("click", hideAnyVisibleMenu);
+  })
+
+  function showColumnOptions(targetMenu: string) {
+    
+    if (targetMenu === displayedMenuColumn){
+      setDislayedMenuColumn("");
+      return;
+    }
+    setDislayedMenuColumn(targetMenu);
+  }
+
   let htmlElements = []; // come back to define the proper type
   for (let i=0; i<headersList.length; i++) {
-    htmlElements.push(<th key={i}>{headersList[i]}</th>)
+    htmlElements.push(
+      <th key={i} onClick={(event) => {showColumnOptions(headersList[i]); event.stopPropagation();}}>
+        {headersList[i]}
+        {displayedMenuColumn === headersList[i] && (
+          <ul className="column-submenu">
+            <li>JOIN USING COLUMN</li>
+            <li>JOIN ON COLUMN</li>
+          </ul>
+        )}
+      </th>
+    )
   }
   return <tr>{htmlElements}</tr>;
 }
@@ -179,17 +213,61 @@ export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
   )
 }
 
-export function TableDisplay({tableData, changeDisplay} : {tableData: GenericQueryData, changeDisplay: (displayDetails)=>void}) {
+interface TableDetails {
+  tableName: string;
+  targetDb: string;
+  schemaName: string
+}
 
- return (
-  <section>
-    {tableData && (
-      <><h1>Tables Data</h1>
-      <table>
-        <thead><TableHeader headersList={tableData.fields} /></thead>
-        <TableBody headersList={tableData.fields} data={tableData.rows} />
-      </table></>
-    )}
-    <button onClick={() => changeDisplay({type: "insert-form", data: null})}>insert</button>
-  </section>)
+function displayRows(setDisplayData: (data: any) => void, queryDetails: TableDetails) {
+  const {schemaName, tableName, targetDb} = queryDetails;
+  const qualifiedTableName = `"${schemaName}"."${tableName}"`;
+  // Get the details from the db everytime as values may have changed since the last time you checked
+  getData(targetDb, `SELECT * FROM ${qualifiedTableName};`)
+  .then(responseData => {
+    if (responseData.errorMsg)
+      alert("Error occurred while trying to query db!");
+    setDisplayData(responseData.data)});
+}
+
+function displayColumns(setDisplayData: (data: any) => void, queryDetails: TableDetails) {
+  const {schemaName, tableName, targetDb} = queryDetails;
+  // Get the details from the db everytime as values may have changed since the last time you checked
+  const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
+  getData(targetDb, query)
+  .then(responseData => {
+    if (responseData.errorMsg)
+      alert("Error occurred while trying to query db!");
+    setDisplayData(responseData.data)});
+}
+
+export function TableDisplay({changeDisplay, tableDetails, displayType} : {changeDisplay: (displayDetails)=>void, tableDetails: TableDetails, displayType: string}) {
+  const [displayData, setDisplayData] = useState<GenericQueryData|null>(null); // add display type on errors
+  const allTableDetails = useRef(null)
+
+  useEffect(() => {
+    if (displayType === "table-columns"){
+      displayColumns(setDisplayData, tableDetails);
+      return;
+    }
+    displayRows(setDisplayData, tableDetails);
+    const query = `SELECT column_name, data_type, table_name, table_schema FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema = '${tableDetails.schemaName};'`
+    getData(tableDetails.targetDb, query)
+    .then(responseData => allTableDetails.current = responseData);
+  }, [])
+
+  return (
+    <section>
+      {displayData ? (
+        <>
+          <h1>Tables Data</h1>
+          <table>
+            <thead><TableHeader headersList={displayData.fields} tablesData={allTableDetails.current} /></thead>
+            <TableBody headersList={displayData.fields} data={displayData.rows} />
+          </table>
+          <button onClick={() => changeDisplay({type: "insert-form", data: null})}>insert</button>
+        </>
+      ) : <h2>Loading...</h2>}
+    </section>
+  )
 }

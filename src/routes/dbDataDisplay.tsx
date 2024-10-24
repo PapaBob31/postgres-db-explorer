@@ -42,7 +42,7 @@ function ClusterLevelObjects({ displayDbForm, targetDb }: {displayDbForm: () => 
   )
 }
 
-function getData(targetDb: string, query: string) {
+export function getData(targetDb: string, query: string) {
   return fetch("http://localhost:4900/query-table", {
     headers: {
       "Content-Type": "application/json"
@@ -129,7 +129,7 @@ function NewRowInput({columns, id, removeRowInput}: {columns: {column_name: stri
   </div>
 }
 
-function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}}) {
+function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}, changeDisplay: (display: string) => void}) {
   const [columnData, setColumnData] = useState<any>(null);
   const {targetDb, tableName, schemaName} = tableDetails;
   const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
@@ -172,7 +172,7 @@ function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: str
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
         alert(`${responseBody.rowCount} new rows uploaded successfully!`)
-        changeDisplay({type: "table-info", data: {...tableDetails}})
+        changeDisplay("table-rows")
       }
     })
   }
@@ -199,38 +199,24 @@ function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: str
   Is the way below the best way to actually do conditional rendering?
 */
 function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}, displayType: string}) {
-  const [display, setDisplay] = useState({type: displayType, data: null})
-  const {targetDb, tableName, schemaName} = tableDetails;
-  function displayRows() {
-    const qualifiedTableName = `"${schemaName}"."${tableName}"`;
-    // Get the details from the db everytime as values may have changed since the last time you checked
-    getData(targetDb, `SELECT * FROM ${qualifiedTableName};`)
-    .then(responseData => setDisplayData(responseData, setDisplay, "table-rows"));
-  }
-
-  function displayColumns() {
-    // Get the details from the db everytime as values may have changed since the last time you checked
-    const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
-    getData(targetDb, query)
-    .then(responseData => setDisplayData(responseData, setDisplay, "table-columns"));
-  }
+  const [display, setDisplay] = useState("root")
+  
   return (
     <section>
-    <h1>{tableName}</h1>
-    {display.type !== "root" && (
-      <nav>
-        <button onClick={()=>setDisplay({type: "root", data: null})}>root</button> 
-        <button disabled>{display.type}</button>
-      </nav>
-    )}
-     {display.type === "root" && (
-       <ul>
-        <button onClick={()=>displayColumns()}>Columns</button> 
-        <button onClick={()=>displayRows()}>Rows</button>
-      </ul>)}
-     {display.type === "table-rows" && <TableDisplay tableData={display.data as any} changeDisplay={setDisplay}/>}
-     {display.type === "table-columns" && <TableDisplay tableData={display.data as any} changeDisplay={setDisplay}/>}
-     {display.type === "insert-form" && <InsertForm tableDetails={tableDetails} changeDisplay={setDisplay}/>}
+      <h1>{tableDetails.tableName}</h1>
+      {display !== "root" && (
+        <nav>
+          <button onClick={()=>setDisplay("root")}>root</button> 
+          <button disabled>{display}</button>
+        </nav>
+      )}
+     {display === "root" && (
+       <nav>
+        <button onClick={()=>setDisplay("table-columns")}>Columns</button> 
+        <button onClick={()=>setDisplay("table-rows")}>Rows</button>
+      </nav>)}
+     {display === "table-rows" && <TableDisplay tableDetails={tableDetails} changeDisplay={setDisplay} displayType={display}/>}
+     {display === "insert-form" && <InsertForm tableDetails={tableDetails} changeDisplay={setDisplay}/>}
     </section>
   )
 }
@@ -258,5 +244,6 @@ export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: 
   try setting an identifier name to exceed the NAMEDATALEN limit in the gui
   quoted identifier
   single quotes delimit string constants
+  Implement measures and checks for data that has already been edited in the db but the old value is still being displayed here
   when writing the insert interface, try and check data types like character varying for correctness before sending it off to the server
 */
