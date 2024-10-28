@@ -60,9 +60,8 @@ async function processReq(connectionStr, sqlQuery) {
 		// console.log(data);
 		return {errorMsg: null, data};
 	}catch(error) {
-		console.log(error)
-		client.release();
-		return {errorMsg: "Something went wrong!", data};
+		console.log(error.message, error.code)
+		return {errorMsg: `Something went wrong! Error: ${error.code}`, data};
 	}finally {
 		client.release();
 	}
@@ -127,7 +126,7 @@ app.post("/mutate-dbData", async (req, res) => {
 	}
 })
 
-app.post("/query-table", async (req, res) => {
+app.post("/query-table", async (req, res) => { // Add robust processing for relations that doesn't exist
 	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
 	// console.log(req.body.query, 'tf?: ', req.body.targetDb, ' :?tf')
 	const results = await processReq(connectionStr, req.body.query)
@@ -136,6 +135,17 @@ app.post("/query-table", async (req, res) => {
 	}else {
 		const processedData = {rows: results.data.rows, fields: results.data.fields.map(field => field.name)};
 		res.status(200).json({errorMsg: null, data: processedData})
+	}
+})
+
+app.post("/drop-table", async (req, res) => {
+	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	const cascadeString = req.body.cascade ? "CASCADE" : "RESTRICT";
+	const results = await processReq(connectionStr, `DROP TABLE ${req.body.tableName} ${cascadeString};`)
+	if (results.errorMsg) {
+		res.status(400).json({errorMsg: results.errorMsg})
+	}else {
+		res.status(200).json({errorMsg: results.errorMsg})
 	}
 })
 
