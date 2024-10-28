@@ -263,9 +263,21 @@ function displayColumns(setDisplayData: (data: any) => void, queryDetails: Table
     setDisplayData({displayName: "Table Columns", data: responseData.data})});
 }
 
+function sendDropTableReq(dbName: string, tableName: string, cascade: boolean): Promise<{errorMsg: string|null}> {
+  return fetch("http://localhost:4900/drop-table", {
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    method: "POST",
+    body: JSON.stringify({targetDb: dbName, tableName, cascade}) // TODO: limit the amount of data sent back
+  }).then(response => response.json())
+}
+
 export function TableDisplay({changeDisplay, tableDetails, displayType} : {changeDisplay: (displayDetails)=>void, tableDetails: TableDetails, displayType: string}) {
   const [displayData, setDisplayData] = useState<{displayName: string, data: GenericQueryData}|null>(null); // add display type on errors
   const allTableDetails = useRef<GenericQueryData|null>(null)
+  const updateMainDisplay = useContext(DataDisplayFn)
 
   useEffect(() => {
     if (displayType === "Table Columns"){
@@ -273,8 +285,9 @@ export function TableDisplay({changeDisplay, tableDetails, displayType} : {chang
       return;
     }
     const longQuery = `SELECT column_name, data_type, table_name, table_schema FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema = '${tableDetails.schemaName}';`
-    console.log(longQuery);
+    // console.log(longQuery);
     const qualifiedTableName = `"${tableDetails.schemaName}"."${tableDetails.tableName}"`;
+    console.log(qualifiedTableName);
     Promise.all([getData(tableDetails.targetDb, `SELECT * FROM ${qualifiedTableName};`), getData(tableDetails.targetDb, longQuery)])
     .then(values => {
       if (values[0].errorMsg){
@@ -287,6 +300,17 @@ export function TableDisplay({changeDisplay, tableDetails, displayType} : {chang
       }else alert("Error occurred while trying to query db! @ allTableDetails");
     });
   }, [displayType])
+
+  async function dropTableAction({tableName, targetDb, schemaName}: TableDetails, cascade: boolean) {
+    const results = await sendDropTableReq(targetDb, `"${schemaName}"."${tableName}"`, cascade);
+    if (results.errorMsg){
+      alert(results.errorMsg)
+    }else{
+      updateMainDisplay({type: "", data: null})
+      alert(`Table '${tableName}' deleted successfully!`)
+    }
+  }
+
 
   return (
     <section>
@@ -303,7 +327,9 @@ export function TableDisplay({changeDisplay, tableDetails, displayType} : {chang
             </thead>
             <TableBody headersList={displayData.data.fields} data={displayData.data.rows} />
           </table>
-          <button onClick={() => changeDisplay({type: "insert-form", data: null})}>insert</button>
+          <button onClick={() => updateMainDisplay({type: "insert-form", data: tableDetails})}>insert</button>
+          <button onClick={() => dropTableAction(tableDetails, true)}>Drop Table Cascade</button>
+          <button onClick={() => dropTableAction(tableDetails, false)}>Drop Table Restrict</button>
         </>
       ) : <h2>Loading...</h2>}
     </section>

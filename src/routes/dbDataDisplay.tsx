@@ -199,7 +199,8 @@ function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: str
   Is the way below the best way to actually do conditional rendering?
 */
 function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}, displayType: string}) {
-  const [display, setDisplay] = useState("root")
+  const [display, setDisplay] = useState(displayType)
+  console.log(display);
   
   return (
     <section>

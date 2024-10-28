@@ -156,7 +156,7 @@ export function CreateTable({targetDb}: {targetDb: string}) {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
         alert("Successful")
-        setDisplayData({type: "table-info", data: {tableName: newTableName, targetDb}})
+        setDisplayData({type: "table-info", data: {tableName: newTableName, targetDb}}) // fix schema bug, Infact the table should be created with the qualified name
       }
     })
   }
