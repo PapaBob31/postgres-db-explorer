@@ -2,7 +2,7 @@ import { useState, useEffect, createContext, useRef } from "react"
 import { DataBases, Roles, TableDisplay } from "./dbData"
 import { CreateTable } from "./newTableForm";
 // import { TargetDb } from "./dbData"
-export const DataDisplayFn = createContext(()=>{});
+export const DataDisplayFn = createContext((dataDetail: {type: string, data: any})=>{});
 
 
 function ClusterLevelObjects({ displayDbForm, targetDb }: {displayDbForm: () => void, targetDb: string}) {
@@ -200,7 +200,6 @@ function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: str
 */
 function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}, displayType: string}) {
   const [display, setDisplay] = useState(displayType)
-  console.log(display);
   
   return (
     <section>
@@ -216,7 +215,7 @@ function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string
         <button onClick={()=>setDisplay("Table Columns")}>Columns</button> 
         <button onClick={()=>setDisplay("Table Rows")}>Rows</button>
       </nav>)}
-     {(display === "Table Rows" || display === "Table Columns") && <TableDisplay tableDetails={tableDetails} changeDisplay={setDisplay} displayType={display}/>}
+     {(display === "Table Rows" || display === "Table Columns") && <TableDisplay tableDetails={tableDetails} displayType={display}/>}
      {display === "insert-form" && <InsertForm tableDetails={tableDetails} changeDisplay={setDisplay}/>}
     </section>
   )

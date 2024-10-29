@@ -1,13 +1,15 @@
 import { useState, useEffect, createContext, useRef, useContext } from "react"
 import { DataDisplayFn, getData } from "./dbDataDisplay"
 export const TargetDb = createContext("")
+const TopLevelTableDetails = createContext({tableName: "", targetDb: "",  schemaName: ""})
 
 // TODO: table details should just be in a context
 // Turn identifiers to quoted identifiers where appropriate
 
-function TablesWithSameColumnName({columnName, tablesData, updateDisplay, tableDetails} 
-  : {tablesData: GenericQueryData, columnName: string, updateDisplay: (data: Updater) => void, tableDetails: any}) {
+function TablesWithSameColumnName({columnName, tablesData, updateDisplay} 
+  : {tablesData: GenericQueryData, columnName: string, updateDisplay: (data: Updater) => void}) {
 
+  let tableDetails = useContext(TopLevelTableDetails)
   let targetTables: JSX.Element[] = [];
   function getAndUpdateData(targetTable: string) {
     const query = `SELECT * FROM "${tableDetails.tableName}" INNER JOIN ${targetTable} USING("${columnName}");`
@@ -22,7 +24,7 @@ function TablesWithSameColumnName({columnName, tablesData, updateDisplay, tableD
   for (let data of tablesData.rows) {
     if (data["column_name"] === columnName && data["table_name"] !== tableDetails.tableName && !targetTables.includes(data["table_name"])) { // is this check efficient?
       targetTables.push(
-        <li onClick={() => {updateDisplay({displayName: "loading", data: null}); getAndUpdateData(data["table_name"])}}>
+        <li key={data["table_name"]} onClick={() => {updateDisplay({displayName: "loading", data: null}); getAndUpdateData(data["table_name"])}}>
           {data["table_name"]}.{columnName}
         </li>
       )
@@ -37,8 +39,9 @@ interface Updater {
   displayName: string
   data: any
 }
-function TableHeader({ headersList, tablesData, updateDisplay, tableMetaData } : 
-  {headersList : string[], tablesData: GenericQueryData, updateDisplay: (data: Updater) => void, tableMetaData: any}) {
+function TableHeader({ headersList, tablesData, updateDisplay } : 
+  {headersList : string[], tablesData: GenericQueryData, updateDisplay: (data: Updater) => void}) {
+
   const [displayedMenuColumn, setDislayedMenuColumn] = useState("");
   useEffect(() => {
     function hideAnyVisibleMenu() {
@@ -59,6 +62,8 @@ function TableHeader({ headersList, tablesData, updateDisplay, tableMetaData } :
 
   let htmlElements = []; // come back to define the proper type
   for (let i=0; i<headersList.length; i++) {
+    if (headersList[i] === "ctid")
+      continue;
     htmlElements.push(
       <th key={i} onClick={(event) => {showColumnOptions(headersList[i]); event.stopPropagation();}}>{/*Handle this event on columns that are part of a joined table*/}
         {headersList[i]}
@@ -66,7 +71,7 @@ function TableHeader({ headersList, tablesData, updateDisplay, tableMetaData } :
           <ul className="column-submenu">
             <li>
               INNER JOIN USING COLUMN &gt; 
-              <TablesWithSameColumnName columnName={displayedMenuColumn} tablesData={tablesData} tableDetails={tableMetaData} updateDisplay={updateDisplay}/>
+              <TablesWithSameColumnName columnName={displayedMenuColumn} tablesData={tablesData} updateDisplay={updateDisplay}/>
             </li>
             <li>JOIN ON COLUMN &gt; </li>
           </ul>
@@ -77,16 +82,67 @@ function TableHeader({ headersList, tablesData, updateDisplay, tableMetaData } :
   return <tr>{htmlElements}</tr>;
 }
 
-function TableBody({ headersList, data } : { headersList: string[], data: any[] }) {
-  let rows:any = [];
-  let rowData:any[] = [];
-  data.forEach(entity => {
-    for (let i=0; i<headersList.length; i++) {
-      rowData.push(<td key={i}>{entity[headersList[i]]}</td>) // empty cells??
+// type paramType = {displayName: string, data: GenericQueryData};
+interface QueryRow {
+  [key: string]: string
+}
+
+function Row({rowData, headersList, updateData} : { rowData: QueryRow, headersList: string[], updateData: (exc: string)=>void}) {
+  const rowId = useRef("");
+  const {targetDb, schemaName, tableName} = useContext(TopLevelTableDetails)
+  let row:any = [];
+
+  for (let i=0; i<headersList.length; i++) {
+    if (headersList[i] === "ctid"){
+      rowId.current = rowData[headersList[i]]
+      continue;
     }
-    rows.push(<tr>{rowData}</tr>);
-    rowData = [];
-  })
+    row.push(<Cell key={i} cellData={rowData[headersList[i]]}/>) // empty cells??
+  }
+
+  function deleteAction() {
+    fetch("http://localhost:4900/delete-row", {
+      credentials: "include",
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({targetDb, rowId: rowId.current, targetTable: `"${schemaName}"."${tableName}"`})
+    })
+    .then(response => response.json())
+    .then(responseData => {
+      if (responseData.errorMsg) {
+        alert(`Error '${responseData.errorMsg}' occured while deleting row(s)`)
+      }else {
+        updateData(rowId.current);
+      }
+    })
+  }
+
+  return <tr>{row}<button onClick={deleteAction}>Delete</button><button>update</button></tr>
+
+}
+
+function Cell({cellData} : {cellData: string} ) {
+  return <td>{cellData}</td>
+}
+
+function TableBody({data} : {data: GenericQueryData}) {
+  const [rowsData, setRowsData] = useState(data.rows);
+  const rows = rowsData.map((entity, index) => <Row key={index} rowData={entity} headersList={data.fields} updateData={updateRows}/>)
+  function updateRows(excludedValue: string) {
+    setRowsData(rowsData.filter(data => data["ctid"] !== excludedValue))
+  }
+
+  // let rows:any = [];
+  // let rowData:any[] = [];
+  // data.forEach(entity => {
+  //   for (let i=0; i<headersList.length; i++) {
+  //     rowData.push(<td key={i}>{entity[headersList[i]]}</td>) // empty cells??
+  //   }
+  //   rows.push(<tr>{rowData}</tr>);
+  //   rowData = [];
+  // })
   return <tbody>{rows}</tbody>
 }
 
@@ -274,7 +330,8 @@ function sendDropTableReq(dbName: string, tableName: string, cascade: boolean): 
   }).then(response => response.json())
 }
 
-export function TableDisplay({changeDisplay, tableDetails, displayType} : {changeDisplay: (displayDetails)=>void, tableDetails: TableDetails, displayType: string}) {
+
+export function TableDisplay({tableDetails, displayType} : {tableDetails: TableDetails, displayType: string}) {
   const [displayData, setDisplayData] = useState<{displayName: string, data: GenericQueryData}|null>(null); // add display type on errors
   const allTableDetails = useRef<GenericQueryData|null>(null)
   const updateMainDisplay = useContext(DataDisplayFn)
@@ -285,10 +342,8 @@ export function TableDisplay({changeDisplay, tableDetails, displayType} : {chang
       return;
     }
     const longQuery = `SELECT column_name, data_type, table_name, table_schema FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema = '${tableDetails.schemaName}';`
-    // console.log(longQuery);
     const qualifiedTableName = `"${tableDetails.schemaName}"."${tableDetails.tableName}"`;
-    console.log(qualifiedTableName);
-    Promise.all([getData(tableDetails.targetDb, `SELECT * FROM ${qualifiedTableName};`), getData(tableDetails.targetDb, longQuery)])
+    Promise.all([getData(tableDetails.targetDb, `SELECT ctid, * FROM ${qualifiedTableName};`), getData(tableDetails.targetDb, longQuery)])
     .then(values => {
       if (values[0].errorMsg){
         alert("Error occurred while trying to query db!");
@@ -315,22 +370,21 @@ export function TableDisplay({changeDisplay, tableDetails, displayType} : {chang
   return (
     <section>
       {displayData && displayData.displayName !== "loading" ? (
-        <>
+        <TopLevelTableDetails.Provider value={tableDetails}>
           <h1>{displayData.displayName}</h1>
           <table>
             <thead>
               <TableHeader 
                 headersList={displayData.data.fields}
-                tableMetaData={tableDetails}
                 tablesData={allTableDetails.current as GenericQueryData}
                 updateDisplay={setDisplayData} />
             </thead>
-            <TableBody headersList={displayData.data.fields} data={displayData.data.rows} />
+            <TableBody data={displayData.data}/>
           </table>
           <button onClick={() => updateMainDisplay({type: "insert-form", data: tableDetails})}>insert</button>
           <button onClick={() => dropTableAction(tableDetails, true)}>Drop Table Cascade</button>
           <button onClick={() => dropTableAction(tableDetails, false)}>Drop Table Restrict</button>
-        </>
+        </TopLevelTableDetails.Provider>
       ) : <h2>Loading...</h2>}
     </section>
   )
