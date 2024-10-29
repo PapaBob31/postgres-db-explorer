@@ -1,7 +1,7 @@
 import setupDbParams from "./utils/connect-db"
 
 const express = require("express");
-const cors = require("cors")
+const cors = require("cors") // ?
 const cookieParser = require('cookie-parser');
 const app = express();
 const PortNo = 4900;
@@ -146,6 +146,17 @@ app.post("/drop-table", async (req, res) => {
 		res.status(400).json({errorMsg: results.errorMsg})
 	}else {
 		res.status(200).json({errorMsg: results.errorMsg})
+	}
+})
+
+app.post("/delete-row", async (req, res) => {
+	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	const {targetTable, rowId} = req.body
+	const results = await processReq(connectionStr, `DELETE FROM ${targetTable} WHERE ctid = '${rowId}';`)
+	if (!results.errorMsg) {
+		res.status(200).json({errorMsg: null})
+	}else {
+		res.status(400).json({errorMsg: results.errorMsg})
 	}
 })
 
