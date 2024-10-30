@@ -113,6 +113,27 @@ async function getDbDetails(connectionStr) {
 	}
 }
 
+app.post("/update-table", async (req, res) => {
+	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
+	const results = await processReq(connectionStr, req.body.query)
+	let updates = null;
+
+	for (let data of results.data) {
+		if (data.command === "SELECT" && !updates) {
+			updates = data;
+			break;
+		}
+	}
+
+	if (results.errorMsg) {
+		res.status(400).json({errorMsg: results.errorMsg, data: null})
+	}else {
+		const processedData = {rows: updates.rows, fields: updates.fields.map(field => field.name)};
+		res.status(200).json({errorMsg: null, data: processedData})
+	}
+
+})
+
 app.post("/mutate-dbData", async (req, res) => {
 	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
 	const results = await processReq(connectionStr, req.body.query);
