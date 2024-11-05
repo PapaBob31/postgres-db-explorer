@@ -13,6 +13,26 @@
         display: block;
       }
 
+      ul {
+        list-style: none;
+      }
+
+      #table-attr-selection label {
+        display: block;
+      }
+
+      #create-form {
+        position: relative;
+      }
+
+      .form-section {
+        display: block;
+        width: 100%;
+        position: absolute;
+
+      }
+
+
       #cluster-lvl-objs {
         width: 20%;
       }
@@ -25,6 +45,21 @@
         margin-bottom: 2px;
       }
 
+      #default-types-container {
+        position: relative;
+        width: 200px;
+      }
+
+      #default-types-dropdown {
+        position: abslute;
+        bottom: 0;
+        width: 100%;
+      }
+
+      #default-type-dropdown.hidden  {
+        display: none;
+      }
+
       .active {
         background-color: skyblue;
         color: white;
@@ -34,6 +69,12 @@
 
       .error {
         outline: 1px solid red;
+        color: red;
+        border-radius: 5px;
+      }
+
+      .error button {
+        float: right;
       }
 
       #add-table-btn {

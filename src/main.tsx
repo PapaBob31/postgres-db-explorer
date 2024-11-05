@@ -1,5 +1,4 @@
 import { useState, useRef, StrictMode } from "react"
-// import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import ConnectDbForm from "./routes/dbConnect"
