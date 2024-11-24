@@ -1,4 +1,0 @@
-.env
-.env.local
-/src/dist
-/node_modules
