@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RDBMS UI</title>
+    <style>
+      main {
+        display: flex;
+      }
+      section {
+        display: block;
+      }
+
+      ul {
+        list-style: none;
+      }
+
+      #table-attr-selection label {
+        display: block;
+      }
+
+      #create-form {
+        position: relative;
+      }
+
+      .form-section {
+        display: block;
+        width: 100%;
+        position: absolute;
+
+      }
+
+
+      #cluster-lvl-objs {
+        width: 20%;
+      }
+
+      #cluster-roles ul {
+/*        padding-left: 30px;*/
+      }
+
+      ul button {
+        margin-bottom: 2px;
+      }
+
+      #default-types-container {
+        position: relative;
+        width: 200px;
+      }
+
+      #default-types-dropdown {
+        position: abslute;
+        bottom: 0;
+        width: 100%;
+      }
+
+      #default-type-dropdown.hidden  {
+        display: none;
+      }
+
+      .active {
+        background-color: skyblue;
+        color: white;
+        border: 1px solid gray;
+        font-size: 1.2rem;
+      }
+
+      .error {
+        outline: 1px solid red;
+        color: red;
+        border-radius: 5px;
+      }
+
+      .error button {
+        float: right;
+      }
+
+      #add-table-btn {
+        color: white;
+        background-color: blue;
+        border: none;
+      }
+
+      #table-data {
+        width: 80%;
+      }
+
+      .db-table-rep {
+        position: relative;
+        width: fit-content;
+      }
+
+      .db-table-menu {
+        position: absolute;
+        padding: 10px;
+        border-radius: 5px;
+        border-width: 1px;
+        border-style: gray;
+        top: 0px;
+        left: 100%;
+        z-index: 1;
+        border-color: black;
+      }
+
+      .db-table-btn {
+        border: none;
+        background-color: rgb(230, 230, 230);
+        padding: 5px 10px;
+        border-radius: 10px;
+        color: rgb(50, 50, 50);
+      }
+
+      table {
+        border-collapse: collapse;
+        border: 2px solid black;
+        table-layout: auto;
+      }
+
+      th {
+        position: relative;
+      }
+
+      th ul {
+        width: 15rem;
+        position: absolute;
+        padding: 5px 0;
+        border: 1px solid gray;
+        border-radius: 5px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        top: -10px;
+        left: 80%;
+        z-index: 1;
+        background-color: rgb(245, 245, 245);
+      }
+
+      th ul li {
+        padding: 5px;
+      }
+
+      th ul li:hover {
+        background-color: lightblue;
+      }
+
+      thead, table th {
+        border: 2px solid black;
+      }
+
+      table td {
+        border: 1px solid black;
+        padding: 5px 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="root"></main>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
