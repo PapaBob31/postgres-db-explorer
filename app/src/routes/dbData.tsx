@@ -5,6 +5,7 @@ const TopLevelTableDetails = createContext({tableName: "", targetDb: "",  schema
 
 // TODO: table details should just be in a context
 // Turn identifiers to quoted identifiers where appropriate
+// Define the type of results to be returned in a fetch request
 
 function TablesWithSameColumnName({columnName, tablesData, updateDisplay} 
   : {tablesData: GenericQueryData, columnName: string, updateDisplay: (data: Updater) => void}) {
@@ -456,15 +457,6 @@ interface TableDetails {
   schemaName: string
 }
 
-
-function getTableColumns(data: GenericQueryData, tableName: string) {
-  // It seems like firefox only reevaluates the result of filter functions after in consoles if the condition changes idk
-  let newData: GenericQueryData = {rows: [], fields: ["column_name", "data_type"]};
-  newData.rows = JSON.parse(JSON.stringify(data.rows.filter(row => row["table_name"] === tableName)))
-  newData.rows.forEach((row) => {delete row["table_name"]; delete row["table_schema"]});
-  return newData
-}
-
 function sendDropTableReq(dbName: string, tableName: string, cascade: boolean): Promise<{errorMsg: string|null}> {
   return fetch("http://localhost:4900/drop-table", {
     headers: {
@@ -485,7 +477,8 @@ export function TableDisplay({tableDetails, displayType} : {tableDetails: TableD
 
   useEffect(() => {
 
-    const longQuery = `SELECT column_name, data_type, table_name, table_schema FROM INFORMATION_SCHEMA.COLUMNS WHERE table_schema = '${tableDetails.schemaName}';`
+    const longQuery = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE 
+                        table_schema = '${tableDetails.schemaName}' AND table_name = '${tableDetails.tableName}';`
     const qualifiedTableName = `"${tableDetails.schemaName}"."${tableDetails.tableName}"`;
     Promise.all([
       getData(tableDetails.targetDb, `SELECT ctid, * FROM ${qualifiedTableName};`), 
@@ -503,8 +496,7 @@ export function TableDisplay({tableDetails, displayType} : {tableDetails: TableD
         allTableDetails.current = values[1].data
       }
       if (displayType === "Table Columns") {
-        const columnData = getTableColumns(allTableDetails.current as GenericQueryData, tableDetails.tableName) // maybe usememo it if expensive
-        setDisplayData({displayName: "Table Columns", data: columnData});
+        setDisplayData({displayName: "Table Columns", data: allTableDetails.current as GenericQueryData});
       }else { // Table Rows
         setDisplayData({displayName: "Table Rows", data: values[0].data})
       }
@@ -549,7 +541,7 @@ export function TableDisplay({tableDetails, displayType} : {tableDetails: TableD
               data={displayData.data}
               updateDisplay={tableBodyUpdateFn}
               editMode={editMode === "rows"}
-              columnData={getTableColumns(allTableDetails.current as GenericQueryData, tableDetails.tableName)}/>
+              columnData={allTableDetails.current as GenericQueryData}/>
           </table>
           <button onClick={() => updateMainDisplay({type: "insert-form", data: tableDetails})}>insert</button>
           <button onClick={() => dropTableAction(tableDetails, true)}>Drop Table Cascade</button>
