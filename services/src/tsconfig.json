@@ -3,7 +3,10 @@
 		"allowUnreachableCode": false,
 		"noImplicitAny": false,
 		"noEmitOnError": false,
+		"noUnusedParameters": true,
+		"noUnusedLocals": true,
 		"outDir": "dist",
+		"module": "nodenext",
 		"lib": ["es2021", "ES2016", "dom"], // install the @types/nodes package
 	}
 }
