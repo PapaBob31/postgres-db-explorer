@@ -468,10 +468,211 @@ function sendDropTableReq(dbName: string, tableName: string, cascade: boolean): 
   }).then(response => response.json())
 }
 
+interface NewQueryObjType{
+  newName: string;
+  newDataType: string;
+  newDefault: string;
+  dropDefault: boolean
+}
+
+function genAlterColumnQuery(columnName: string, columnDropped: boolean, newQueryObj: NewQueryObjType) {
+  if (columnDropped)
+    return `DROP COLUMN ${columnName}`
+
+  if (newQueryObj.newName)
+    return `RENAME COLUMN ${columnName} TO ${newQueryObj.newName}`
+
+  if (newQueryObj.newDefault)
+    return `ALTER COLUMN ${columnName} SET DEFAULT ${newQueryObj.newDefault}`
+
+  if (newQueryObj.dropDefault)
+    return `ALTER COLUMN ${columnName} DROP DEFAULT ${newQueryObj.dropDefault}`
+  return ""
+}
+
+interface AlterColumnParams {
+  column: {column_name: string, data_type: string};
+  getChanges: boolean;
+  addColumnChanges: (str: string)=>void;
+}
+
+function AlterColumnInterface({column, getChanges, addColumnChanges} : AlterColumnParams) {
+  const [columnDropped, setColumnDropped] = useState(false);
+  const [inputsInterface, setInputsInterface] = useState("rename-column")
+  const newValuesQuery = useRef({newName: "", newDataType: "", newDefault: "", dropDefault: false})
+
+
+  useEffect(()=>{
+    if (getChanges) {
+      const query = genAlterColumnQuery(column.column_name, columnDropped, newValuesQuery.current)
+      if (query)
+        addColumnChanges(query);
+    }
+  }, [getChanges])
+
+  function storeValues(event: React.ChangeEvent<HTMLInputElement>) {
+    if (event.target.name === "new-name") {
+      newValuesQuery.current.newName += event.target.value.trim();
+    }
+
+    if (event.target.name === "new-data-type") {
+      newValuesQuery.current.newDataType += event.target.value.trim();
+    }
+
+    if (event.target.name === "new-default") {
+      newValuesQuery.current.newDefault += event.target.value.trim();
+    }
+
+     if (event.target.name === "drop-default") {
+      newValuesQuery.current.dropDefault = event.target.checked;
+    } 
+  }
+
+  return (
+    <section>
+      <strong>{column.column_name}</strong>
+      <select>
+        <option onClick={()=>setInputsInterface("rename-column")}>Rename column</option>
+        <option disabled>Rename constraints</option>
+        <option onClick={()=>setInputsInterface("others")}>Others</option>
+      </select>
+      {inputsInterface === "rename-column" && (
+        <div>
+          <label>New Name: </label>
+          <input name="new-name" type="text" defaultValue={column.column_name} disabled={columnDropped} onChange={storeValues}/>
+        </div>
+      )}
+      {inputsInterface === "others" && <div>
+        <label>New Data Type: </label>
+        <input name="new-data-type" type="text" defaultValue={column.data_type} disabled={columnDropped} onChange={storeValues}/>
+        <label>Set default: </label>
+        <input name="new-default" type="text" onChange={storeValues} />
+        <label>Drop default: </label>
+        <input name="drop-default" type="checkbox" disabled={columnDropped} onChange={storeValues}/>
+        <button onClick={()=>setColumnDropped(!columnDropped)}>Drop column</button>
+      </div>}
+     </section>
+  )
+}
+
+function generateUniqueKey() {
+  let key = "";
+  const alphaNumeric = "0abcdefghijklmnopqrstuvwxyz123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  for (let i=0; i<5; i++) {
+    const randIndex = Math.floor(Math.random()  * alphaNumeric.length);
+    key += alphaNumeric[randIndex];
+  }
+  return key
+}
+
+
+interface TableChanges{
+  newSchema: string;
+  newName: string;
+  newColumnsQuery: string[]
+}
+
+function generateAlterTableQuery(tableName: string, values: TableChanges, editedColumnsQuery: string) {
+  let query = "";
+  if (values.newSchema) {
+    query += `ALTER TABLE '${tableName}' SET SCHEMA '${values.newSchema}';`
+  }
+
+  if (values.newName) {
+    query += `ALTER TABLE '${tableName}' RENAME TO '${values.newName}';`
+  }
+
+  if (values.newColumnsQuery){
+    query += `ALTER TABLE '${tableName}' ;`
+    query += values.newColumnsQuery.join(',');
+  }
+
+  if (editedColumnsQuery){
+    query += `ALTER TABLE '${tableName}' `
+    query += editedColumnsQuery;
+  }
+
+  return query
+}
+
+function AlterTableForm({tableDetails, columnsDetails} : {tableDetails: TableDetails, columnsDetails: {column_name: string, data_type: string}[]}) {
+  const [updateData, setUpdateData] = useState(false);
+  const [newColumns, setNewColumns] = useState<{key: string, queryStr: string}[]>([]);
+  const values = useRef({newSchema: "", newName: "", newColumnsQuery: [] as string[]})
+  const existingColumnsAlterQuery = useRef("");
+
+  existingColumnsAlterQuery.current = ""
+  useEffect(() => {
+    if (updateData) {
+      values.current.newColumnsQuery = newColumns.map(queryObj => queryObj.queryStr);
+      const query = generateAlterTableQuery(tableDetails.tableName, values.current, existingColumnsAlterQuery.current);
+      console.log(query);
+      /*fetch("http://localhost:4900/alter-table")
+      .then(response => {
+        if (response.ok) {
+          // remove from alter table state
+        }
+      })*/
+    }
+  })
+
+  function addColumnAlterQuery(newStr: string) {
+    if (!existingColumnsAlterQuery.current)
+      existingColumnsAlterQuery.current += newStr
+    else
+      existingColumnsAlterQuery.current += ',' + newStr;
+  }
+
+  function editTableProps(event: React.ChangeEvent<HTMLInputElement>) {
+    const editedTableValues = values.current;
+
+    switch(event.target.name) {
+      case "new-table-name":
+        editedTableValues.newName = event.target.value.trim();
+        break;
+      case "new-table-schema":
+        editedTableValues.newSchema = event.target.value.trim();
+        break;
+    }
+  }
+
+  function updateValue(key: string, newQueryStr: string) {
+    let updates = [...newColumns]
+    for (let i=0; i< updates.length; i++) {
+      if (updates[i].key === key){
+        updates[i].queryStr = newQueryStr;
+        setNewColumns(updates);
+        break;
+      }
+    }
+  }
+
+  return (
+    <section>
+      {updateData && <p><strong><em>Loading...</em></strong></p>}
+      <span>Rename Table: </span>
+      <input name="new-table-name" type="text" defaultValue={tableDetails.tableName} onChange={editTableProps}/>
+      <div></div>
+      <span>Change Schema</span>
+      <input name="new-table-schema" type="text" onChange={editTableProps}/>
+      <h1>Columns</h1>
+      {columnsDetails.map(column => (
+        <AlterColumnInterface column={column} addColumnChanges={addColumnAlterQuery} getChanges={updateData} key={column.column_name}/>
+      ))}
+      <button onClick={()=>setNewColumns([...newColumns, {key: generateUniqueKey(), queryStr: ""}])}>Add column</button>
+      {newColumns.map(columnData => <div key={columnData.key}>
+        <label>newColumnQuery: </label>
+        <input type="text" key={columnData.key} value={columnData.queryStr} onChange={(event)=>updateValue(columnData.key, event.target.value)}/>
+        <button>remove</button>
+      </div>)}
+      <button onClick={()=>setUpdateData(!updateData)}>Update</button>
+    </section>
+  )
+}
 
 export function TableDisplay({tableDetails, displayType} : {tableDetails: TableDetails, displayType: string}) {
   const [displayData, setDisplayData] = useState<{displayName: string, data: GenericQueryData}|null>(null); // add display type on errors
-  const [editMode, setEditMode] = useState("");
+  const [rowEditMode, setRowEditMode] = useState(false);
   const allTableDetails = useRef<GenericQueryData|null>(null)
   const updateMainDisplay = useContext(DataDisplayFn)
 
@@ -514,39 +715,49 @@ export function TableDisplay({tableDetails, displayType} : {tableDetails: TableD
   }
 
   function tableBodyUpdateFn(newData: GenericQueryData) {
-    if (editMode === "rows") {
-      setEditMode("")
-    }
+    setRowEditMode(false)
     setDisplayData({displayName: "Table Rows", data: newData})
   }
-  function changeEditMode() {
-    setEditMode(editMode === "rows" ? "" : "rows")
+
+  function changeRowEditMode() {
+    setRowEditMode(!rowEditMode)
+  }
+
+  function DisplayAlterTableForm() {
+    setDisplayData({displayName: "Alter Table", data: displayData!.data})
   }
 
   return (
     <section>
       {displayData && displayData.displayName !== "loading" ? (
-        <TopLevelTableDetails.Provider value={tableDetails}>
-          <h1>{displayData.displayName}</h1>
-          <button className={editMode === "rows" ? "active" : ""} onClick={changeEditMode}>Rows edit mode</button>
-          <button disabled>Find and Replace</button>
-          <table>
-            <thead>
-              <TableHeader 
-                headersList={displayData.data.fields}
-                tablesData={allTableDetails.current as GenericQueryData}
-                updateDisplay={setDisplayData} />
-            </thead>
-            <TableBody 
-              data={displayData.data}
-              updateDisplay={tableBodyUpdateFn}
-              editMode={editMode === "rows"}
-              columnData={allTableDetails.current as GenericQueryData}/>
-          </table>
-          <button onClick={() => updateMainDisplay({type: "insert-form", data: tableDetails})}>insert</button>
-          <button onClick={() => dropTableAction(tableDetails, true)}>Drop Table Cascade</button>
-          <button onClick={() => dropTableAction(tableDetails, false)}>Drop Table Restrict</button>
-        </TopLevelTableDetails.Provider>
+        <>{displayData.displayName === "Alter Table" && (
+            <AlterTableForm tableDetails={tableDetails} columnsDetails={allTableDetails.current!.rows}/>
+          )}
+
+        {displayData && displayData.displayName !== "Alter Table" && (
+          <TopLevelTableDetails.Provider value={tableDetails}>
+            <h1>{displayData.displayName}</h1>
+            <button className={rowEditMode ? "active" : ""} onClick={changeRowEditMode}>Rows edit mode</button>
+            <button onClick={DisplayAlterTableForm} disabled={allTableDetails.current ? false : true}>alter table</button>
+            <button disabled>Find and Replace</button>
+            <table>
+              <thead>
+                <TableHeader 
+                  headersList={displayData.data.fields}
+                  tablesData={allTableDetails.current as GenericQueryData}
+                  updateDisplay={setDisplayData} />
+              </thead>
+              <TableBody 
+                data={displayData.data}
+                updateDisplay={tableBodyUpdateFn}
+                editMode={rowEditMode}
+                columnData={allTableDetails.current as GenericQueryData}/>
+            </table>
+            <button onClick={() => updateMainDisplay({type: "insert-form", data: tableDetails})}>insert</button>
+            <button onClick={() => dropTableAction(tableDetails, true)}>Drop Table Cascade</button>
+            <button onClick={() => dropTableAction(tableDetails, false)}>Drop Table Restrict</button>
+          </TopLevelTableDetails.Provider>
+        )}</>
       ) : <h2>Loading...</h2>}
     </section>
   )
