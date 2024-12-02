@@ -339,6 +339,105 @@ function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: s
   )
 }
 
+
+function CompositeTypeValues() {
+  return  (
+    <>
+      <label>attribute name</label>
+      <input type="text"/>
+      <label>Data Type</label>
+      <input type="text"/>
+      <label>collation</label>
+      <input type="text"/>
+    </>
+  )
+}
+
+function EnumTypeValues() {
+  const [labels, setNewLabels] = useState<string[]>([])
+  const inputElementRef = useRef<HTMLInputElement>(null)
+
+  function addNewLabel() {
+    const newLabel = inputElementRef.current!.value.trim()
+    if (!newLabel) 
+      return;
+
+    for (let label of labels) {
+      if (newLabel === label)
+        return;
+    }
+
+    setNewLabels([...labels, newLabel])
+  }
+
+  function removeLabel(labelToRemove: string) {
+    setNewLabels(labels.filter(label => label !== labelToRemove))
+  }
+  return (
+    <>
+      {labels.map(label => (<div key={label}>
+          <span>{label}</span>
+          <button type="button" onClick={() => removeLabel(label)}>Remove</button>
+      </div>))}
+      <label>label</label>
+      <input type="text" ref={inputElementRef} />
+      <button type="button" onClick={addNewLabel}>add</button>
+    </>
+  )
+}
+
+function RangeTypeValues() {
+  return (<>
+    <label>SUBTYPE</label>
+    <input type="text"/>
+    <label>SUBTYPE_OPCLASS</label>
+    <input type="text"/>
+    <label>COLLATION</label>
+    <input type="text"/>
+    <label>CANONICAL</label>
+    <input type="text"/>
+    <label>SUBTYPE_DIFF</label>
+    <input type="text"/>
+    <label>MULTIRANGE_TYPE_NAME</label>
+    <input type="text"/>
+  </>)
+}
+
+export function NewTypeForm() {
+  const [typeFormat, setTypeFormat] = useState("composite")
+
+  const nameRef = useRef<HTMLInputElement>(null);
+  function sendQuery() {
+    const typeName =  nameRef.current!.value.trim();
+    if (!typeName)
+      return;
+  }
+  return (
+    <form>
+      <label>Type of 'type':</label>
+      <select value="composite" onChange={(event) => setTypeFormat(event.target.value)}>
+        <option>composite</option>
+        <option>enum</option>
+        <option>range</option>
+        <option>base</option>
+        <option>shell</option>
+      </select>
+      <div>
+        <label>name:</label>
+        <input type="text" ref={nameRef}/>
+      </div>
+      <div>
+        {typeFormat === "composite" && <CompositeTypeValues/>}
+        {typeFormat === "enum" && <EnumTypeValues/>}
+        {typeFormat === "base" && <i>Not implemented yet</i>}
+        {typeFormat === "range" && <RangeTypeValues/>}
+       </div>
+       <button type="button" onClick={sendQuery}>Create</button>
+    </form>
+  )
+}
+
+
 function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]}}) {
   const [visible, setVisible] = useState(false);
   const setDisplayData = useContext(DataDisplayFn);
@@ -351,6 +450,7 @@ function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]
         <>
           <SchemaTables schemaDetails={schemaDetails}/>
           <button id="add-table-btn" onClick={() => setDisplayData({type: "create-table-form", data: null})}>Add Table</button>
+          <button onClick={() => setDisplayData({type: "new-type-form", data: null})}>Add type</button>
         </>)
       }
     </>

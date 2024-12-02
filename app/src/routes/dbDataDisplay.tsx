@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useRef } from "react"
-import { DataBases, Roles, TableDisplay } from "./dbData"
+import { DataBases, Roles, TableDisplay, NewTypeForm } from "./dbData"
 import { CreateTable } from "./newTableForm";
 // import { TargetDb } from "./dbData"
 export const DataDisplayFn = createContext((dataDetail: {type: string, data: any})=>{});
@@ -227,6 +227,7 @@ export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: 
   return (
     <DataDisplayFn.Provider value={setDisplayInfo}>
       <ClusterLevelObjects displayDbForm={showDbConnectForm} targetDb={dbName} />
+      {displayInfo.type === "new-type-form" && <NewTypeForm targetDb={dbName}/>}
       {displayInfo.type === "create-table-form" && <CreateTable targetDb={dbName}/>}
       {displayInfo.type === "table-info" && <TableInfo tableDetails={displayInfo.data} displayType={"root"}/>}
       {displayInfo.type === "insert-form" && <TableInfo tableDetails={displayInfo.data} displayType={"insert-form"}/>}
@@ -237,6 +238,7 @@ export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: 
 
 
 /*
+  ALWAYS REMEMBER THAT THE GOAL IS TO MAKE IT WAY EASIER THAN TYPING THE COMMANDS MANUALLY
   Change data fetching mechanism to tan stack query or react query
   Implement checking if a table exists before query incase a 
   previously existing table has been deleted outside the guis
