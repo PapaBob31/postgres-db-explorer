@@ -1,64 +1,20 @@
-import { useState, useEffect, createContext, useRef } from "react"
-import { DataBases, Roles, TableDisplay, NewTypeForm } from "./dbData"
+import { useState, useEffect, useRef } from "react"
+import { TableRowsDisplay, NewTypeForm, DashBoard } from "./dbData"
 import { CreateTable } from "./newTableForm";
-// import { TargetDb } from "./dbData"
-export const DataDisplayFn = createContext((dataDetail: {type: string, data: any})=>{});
+import { useSelector, useDispatch } from "react-redux"
+import { selectCurrentPage, selectTargetTableDetails, pageChanged } from "../store"
+import ServerObjects from "./sideNavBar"
 
 
-function ClusterLevelObjects({ displayDbForm, targetDb }: {displayDbForm: () => void, targetDb: string}) {
-  
-  const [data, setData] = useState<{roles: string[], dataBases: string[]}>({roles: [], dataBases: []});
-  useEffect(() => {
-    if (!targetDb) {
-      displayDbForm()
-      return
-    }
-    fetch("http://localhost:4900", {
-      credentials: "include",
-      headers: {"Content-Type": "application/json"},
-      method: "POST",
-      body: JSON.stringify({targetDb}) 
-    })
-    .then(response => response.json())
-    .then(responseBody => {
-      if (responseBody.errorMsg) {
-        displayDbForm()
-      }else {
-        setData(responseBody.data)
-      }
-    })
-    .catch(() => alert("Internet connection Error: Check your internet connection and if the database is reachable"))
-  }, [])
-  
-  return (
-    <section id="cluster-lvl-objs">
-      {data && (
-        <>
-          <Roles dbClusterRoles={data.roles} />
-          <DataBases clusterDbs={data.dataBases} initDb={targetDb} />
-        </>
-      )}
-    </section>
-  )
-}
-
-export function getData(targetDb: string, query: string) {
+export function getData(query: string) {
   return fetch("http://localhost:4900/query-table", {
     headers: {
       "Content-Type": "application/json"
     },
     credentials: "include",
     method: "POST",
-    body: JSON.stringify({targetDb, query}) // TODO: limit the amount of data sent back
+    body: JSON.stringify({query}) // TODO: limit the amount of data sent back
   }).then(response => response.json())
-}
-
-function setDisplayData(data: any, setDisplay: (a: any)=>void, displayType: string) {
-  if (data.errorMsg){
-      alert(data.errorMsg)
-  }else {
-    setDisplay({type: displayType, data: data.data})
-  }
 }
 
 function getInputDetails(container: HTMLDivElement) {
@@ -129,15 +85,16 @@ function NewRowInput({columns, id, removeRowInput}: {columns: {column_name: stri
   </div>
 }
 
-function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}, changeDisplay: (display: string) => void}) {
+function InsertForm() {
   const [columnData, setColumnData] = useState<any>(null);
-  const {targetDb, tableName, schemaName} = tableDetails;
+  const {tableName, schemaName} = useSelector(selectTargetTableDetails);
   const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
   const [insertRowKeys, setInsertRowKeys] = useState<number[]>([1]);
   const freeKeys = useRef<number[]>([]);
+  const dispatch = useDispatch()
 
   useEffect(() => {
-    getData(targetDb, query)
+    getData(query)
     .then(responseData => setColumnData(responseData.data))
   }, [])
 
@@ -164,15 +121,15 @@ function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: str
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({targetDb, query, queryType: "insert"}) 
+      body: JSON.stringify({query, queryType: "insert"}) 
     })
     .then(response => response.json())
     .then(responseBody => {
       if (responseBody.errorMsg) {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
-        alert(`${responseBody.rowCount} new rows uploaded successfully!`)
-        changeDisplay("table-rows")
+        alert(`${responseBody.msg} new rows uploaded successfully!`)
+        dispatch(pageChanged({newPage: "table-rows-data"}))
       }
     })
   }
@@ -198,12 +155,17 @@ function InsertForm({tableDetails, changeDisplay}:{tableDetails: {tableName: str
 
   Is the way below the best way to actually do conditional rendering?
 */
-function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string, targetDb: string, schemaName: string}, displayType: string}) {
-  const [display, setDisplay] = useState(displayType)
+function TableInfo({ currentDisplay } : {currentDisplay: string}) {
+  const [display, setDisplay] = useState(currentDisplay)
+  const tableDetails = useSelector(selectTargetTableDetails) 
   
   return (
     <section>
       <h1>{tableDetails.tableName}</h1>
+      <p><b>Table Owner?</b></p>
+      <p><b>Number of row in the table</b></p>
+      <p><b>RLS policies</b></p>
+
       {display !== "root" && (
         <nav>
           <button onClick={()=>setDisplay("root")}>root</button> 
@@ -215,29 +177,45 @@ function TableInfo({tableDetails, displayType}:{tableDetails: {tableName: string
         <button onClick={()=>setDisplay("Table Columns")}>Columns</button> 
         <button onClick={()=>setDisplay("Table Rows")}>Rows</button>
       </nav>)}
-     {(display === "Table Rows" || display === "Table Columns") && <TableDisplay tableDetails={tableDetails} displayType={display}/>}
-     {display === "insert-form" && <InsertForm tableDetails={tableDetails} changeDisplay={setDisplay}/>}
+     {(display === "Table Rows" || display === "Table Columns") && <TableRowsDisplay displayType={display}/>}
+     {display === "insert-form" && <InsertForm />}
     </section>
   )
 }
 
-export default function Main({ showDbConnectForm, dbName }: {showDbConnectForm: () => void, dbName: string}) {
-  // const [tableData, setTableData] = useState(null);
-  const [displayInfo, setDisplayInfo] = useState<{type: string, data: any}>({type: "", data: null})
+// todo: find a way to limit the possible key types
+const stateDisplayMap: {[key: string]: JSX.Element} = {
+  "dashboard": <DashBoard/>,
+  "new-type-form": <NewTypeForm/>,
+  "create-table-form": <CreateTable />,
+  "table-info": <TableInfo currentDisplay="root" />,
+  "table-rows-data": <TableInfo currentDisplay="Table Rows"/>,
+  "table-columns-data": <TableInfo currentDisplay="Table Columns"/>,
+  "insert-form": <InsertForm />,
+  //"table-data": <TableRowsDisplay/>
+}
+
+
+function DataDisplay() {
+  const page = useSelector(selectCurrentPage);
+
+  return <>{stateDisplayMap[page]}</>
+}
+
+export default function DbDataDisplay() {
+
   return (
-    <DataDisplayFn.Provider value={setDisplayInfo}>
-      <ClusterLevelObjects displayDbForm={showDbConnectForm} targetDb={dbName} />
-      {displayInfo.type === "new-type-form" && <NewTypeForm targetDb={dbName}/>}
-      {displayInfo.type === "create-table-form" && <CreateTable targetDb={dbName}/>}
-      {displayInfo.type === "table-info" && <TableInfo tableDetails={displayInfo.data} displayType={"root"}/>}
-      {displayInfo.type === "insert-form" && <TableInfo tableDetails={displayInfo.data} displayType={"insert-form"}/>}
-      {/*displayInfo.type === "table-data" && <TableDisplay tableData={displayInfo.data} /> */}
-    </DataDisplayFn.Provider>
+    <>
+      <ServerObjects/>
+      <DataDisplay/>
+    </>
   )
 }
 
 
 /*
+  create role, set role privieges, group role, drop role
+
   ALWAYS REMEMBER THAT THE GOAL IS TO MAKE IT WAY EASIER THAN TYPING THE COMMANDS MANUALLY
   Change data fetching mechanism to tan stack query or react query
   Implement checking if a table exists before query incase a 

@@ -1,13 +1,24 @@
 import { useRef } from "react"
+import { serverConnected } from "../store"
+import { useDispatch } from "react-redux"
 
-async function connectDb(urlParams) {
-	let serverSpecs = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:5432`
 
-	const serverReq = new Request("http://localhost:4900/verify-connect-str", {
+interface URLParams {
+	user: string;
+	password: string;
+	hostname: string;
+	dbname: string;
+	port: number;
+}
+
+async function connectDb(urlParams: URLParams) {
+	let connectionString = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:${urlParams.port}/${urlParams.dbname}`
+
+	const serverReq = new Request("http://localhost:4900/connect-db", {
 		credentials: "include",
 		headers: {"Content-Type": "application/json"},
 		method: "POST",
-		body: JSON.stringify({serverSpecs, targetDb: urlParams.dbname})
+		body: JSON.stringify({connectionString})
 	})
 
 	let response;
@@ -20,7 +31,7 @@ async function connectDb(urlParams) {
 	return response
 }
 
-function serializeForm(elem) {
+function serializeForm(elem: Element) {
 	let urlParamsObj = Object();
 	const inputElements = elem.querySelectorAll("input");
 	for (let element of inputElements) {
@@ -29,17 +40,19 @@ function serializeForm(elem) {
 	return urlParamsObj
 }
 
-export default function ConnectDbForm({setDbDetails} : {setDbDetails: (dbName: string) => void}) {
-	const formRef = useRef(null)
+export default function ConnectDbForm() {
+	const formRef = useRef<HTMLFormElement|null>(null)
+	const dispatch = useDispatch();
 
-	async function connect(event) {
+	async function connect(event: React.FormEvent) {
 		event.preventDefault()
-		let urlParams = serializeForm(formRef.current)
+		let urlParams = serializeForm(formRef.current as HTMLFormElement)
 		const response = await connectDb(urlParams);
 		if (!response) return;
 
 		if (response.ok) {
-			setDbDetails(urlParams.dbname);
+			const tableDetails = {tableName: "", targetDb: urlParams.dbname, schemaName: ""}
+			dispatch(serverConnected({newPage:  "dashboard", connectedDb: urlParams.dbname, tableDetails}))
 		}else {
 			alert("Invalid connection string")
 		}
@@ -54,6 +67,8 @@ export default function ConnectDbForm({setDbDetails} : {setDbDetails: (dbName: s
 			<input type="text" name="hostname" required/>
 			<label>Db name</label>
 			<input type="text" name="dbname" required/>
+			<label>Port number</label>
+			<input type="number" name="port" min="1024" max="65535" required/>
 			<button type="submit">Connect</button>
 		</form>
 	)

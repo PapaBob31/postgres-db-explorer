@@ -1,5 +1,6 @@
-import { useState, useRef, useContext } from "react"
-import { DataDisplayFn } from "./dbDataDisplay";
+import { useState, useRef } from "react"
+import { tableCreated } from "../store"
+import { useDispatch } from "react-redux"
 
 
 // escapes special sql chracters in identifiers
@@ -380,10 +381,10 @@ function ColumnDetails({visibility} : {visibility: "visible"|"hidden"|"collapse"
 }
 
 
-export function CreateTable({targetDb}: {targetDb: string}) {
+export function CreateTable() {
   const [display, setDisplay] = useState<"general"|"columns"|"sql">("general")
   const formRef = useRef<HTMLFormElement>(null);
-  const setDisplayData = useContext(DataDisplayFn)
+  const dispatch = useDispatch()
 
   function createTable(event) {
     event.preventDefault();
@@ -393,7 +394,7 @@ export function CreateTable({targetDb}: {targetDb: string}) {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({targetDb, query, queryType: "create"}) 
+      body: JSON.stringify({query, queryType: "create"}) 
     })
     .then(response => response.json())
     .then(responseBody => {
@@ -401,7 +402,8 @@ export function CreateTable({targetDb}: {targetDb: string}) {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
         alert("Successful")
-        setDisplayData({type: "table-info", data: {tableName: newTableName, targetDb}}) // fix schema bug, Infact the table should be created with the qualified name
+        dispatch(tableCreated({newPage: "table-info", newTableName})) // fix schema bug, Infact the table should be created with the qualified name
+        // add interfce for choosing the schema the new table belongs to if not implemented yet.
       }
     })
   }

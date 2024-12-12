@@ -1,7 +1,8 @@
-import { useState, useEffect, createContext, useRef, useContext } from "react"
-import { DataDisplayFn, getData } from "./dbDataDisplay"
-export const TargetDb = createContext("")
-const TopLevelTableDetails = createContext({tableName: "", targetDb: "",  schemaName: ""})
+import { useState, useEffect, useRef } from "react"
+import { getData } from "./dbDataDisplay"
+import { pageChanged, selectTargetTableDetails } from "../store"
+import { useDispatch, useSelector } from "react-redux"
+
 
 // TODO: table details should just be in a context
 // Turn identifiers to quoted identifiers where appropriate
@@ -10,11 +11,11 @@ const TopLevelTableDetails = createContext({tableName: "", targetDb: "",  schema
 function TablesWithSameColumnName({columnName, tablesData, updateDisplay} 
   : {tablesData: GenericQueryData, columnName: string, updateDisplay: (data: Updater) => void}) {
 
-  let tableDetails = useContext(TopLevelTableDetails)
+  const tableDetails = useSelector(selectTargetTableDetails) 
   let targetTables: JSX.Element[] = [];
   function getAndUpdateData(targetTable: string) {
     const query = `SELECT * FROM "${tableDetails.tableName}" INNER JOIN ${targetTable} USING("${columnName}");`
-    getData(tableDetails.targetDb, query)
+    getData(query)
     .then(response => {
       if (!response.errorMsg) {
         updateDisplay({displayName: `${tableDetails.tableName} INNER JOIN ${targetTable} USING ${columnName};`, data: response.data})
@@ -88,7 +89,8 @@ interface QueryRow {
 
 function DataRow({rowData, headersList, updateData} : { rowData: QueryRow, headersList: string[], updateData: (exc: string)=>void}) {
   const rowId = useRef("");
-  const {targetDb, schemaName, tableName} = useContext(TopLevelTableDetails)
+
+  const {schemaName, tableName} = useSelector(selectTargetTableDetails) 
   let row:any = [];
 
   for (let i=0; i<headersList.length; i++) {
@@ -106,7 +108,7 @@ function DataRow({rowData, headersList, updateData} : { rowData: QueryRow, heade
       headers: {
         "content-type": "application/json"
       },
-      body: JSON.stringify({targetDb, rowId: rowId.current, targetTable: `"${schemaName}"."${tableName}"`})
+      body: JSON.stringify({rowId: rowId.current, targetTable: `"${schemaName}"."${tableName}"`})
     })
     .then(response => response.json())
     .then(responseData => {
@@ -157,7 +159,7 @@ function InputRow({rowData, headersList, updateData, columnData, rowDataIndex} :
   { rowData: QueryRow, headersList: string[], updateData: (dat: DataUpdate, i: number)=>void, columnData: any, rowDataIndex: number}) {
 
   const rowId = useRef("");
-  // const {targetDb, schemaName, tableName} = useContext(TopLevelTableDetails)
+  // const {schemaName, tableName} = useSelector(selectTargetTableDetails)
   let row:any = [];
   const rowEditDetails = useRef<DataUpdate>({ctid: "", updates: []});
   const columnDataMap: {[key: string]: string} = {};
@@ -241,20 +243,20 @@ function constructQuery(dataInput: DataUpdate[], tableName: string) {
 }
 
 // getData is very similar to this except the endpoint, I should probably edit it to accept endpoints as parameters
-function sendUpdateQuery(targetDb: string, query: string) {
+function sendUpdateQuery(query: string) {
   return fetch("http://localhost:4900/update-table", {
     headers: {
       "Content-Type": "application/json"
     },
     credentials: "include",
     method: "POST",
-    body: JSON.stringify({targetDb, query}) // TODO: limit the amount of data sent back
+    body: JSON.stringify({query}) // TODO: limit the amount of data sent back
   }).then(response => response.json())
 }
 
 function TableBody({data, editMode, columnData, updateDisplay} : {data: GenericQueryData, columnData: GenericQueryData, editMode: boolean, updateDisplay: (d:any)=>void}) {
   const [rowsData, setRowsData] = useState(data.rows);
-  const {tableName, targetDb, schemaName } = useContext(TopLevelTableDetails)
+  const {tableName, schemaName } = useSelector(selectTargetTableDetails)
   let rows:JSX.Element[] = [];
   const editedRowsData = useRef<DataUpdate[]>(initArray(rowsData.length));
 
@@ -270,7 +272,7 @@ function TableBody({data, editMode, columnData, updateDisplay} : {data: GenericQ
     if (editedRowsData.current.some(data => data.updates.length > 0)) {
       // todo: Implement not sending on input validation error from InputCell
       const updateQuery = constructQuery(editedRowsData.current, tableName)
-      sendUpdateQuery(targetDb, updateQuery+`SELECT ctid, * FROM "${schemaName}"."${tableName}";`)
+      sendUpdateQuery(updateQuery+`SELECT ctid, * FROM "${schemaName}"."${tableName}";`)
       .then(response => {
         if (response.errorMsg) {
           alert(response.errorMsg)
@@ -293,50 +295,6 @@ function TableBody({data, editMode, columnData, updateDisplay} : {data: GenericQ
 
 
   return <tbody>{rows}{editMode && <tr><td><button onClick={updateTable}>Update</button></td></tr>}</tbody>
-}
-
-function Table({schemaName, tableName, setVisibleMenu, visibleMenu}:{schemaName: string, tableName: string, setVisibleMenu: (menu: string)=>void, visibleMenu: string}) {
-  const targetDb = useContext(TargetDb);
-  const setDisplayData = useContext(DataDisplayFn);
-
-  return (
-    <li key={tableName} className="db-table-rep">
-      <button className="db-table-btn" onClick={()=>{
-        setDisplayData({type: "table-info", data: {targetDb, tableName, schemaName}})}
-      }>
-        {tableName}
-      </button>
-      <button onClick={(event)=>{
-        event.stopPropagation();
-        setVisibleMenu(visibleMenu === tableName ? "" : tableName)
-      }}>...</button>
-
-      {visibleMenu === tableName && (
-        <div className="db-table-menu">
-          <button onClick={()=>setDisplayData({type: "insert-form", data: {targetDb, tableName, schemaName}})}>Insert</button>
-          <button>Delete</button>
-        </div>
-      )}
-    </li>
-  )
-}
-
-function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: string[]}}) {
-  const [displayedMenu, setDisplayedMenu] = useState("");
-  useEffect(() => {
-    function hideAnyVisibleMenu() {
-      setDisplayedMenu("false")
-    }
-    document.addEventListener("click", hideAnyVisibleMenu)
-    return () => document.removeEventListener("click", hideAnyVisibleMenu);
-  })
-  
-  return (
-    <ul>
-      {schemaDetails.tables.map(tableName => <Table tableName={tableName} schemaName={schemaDetails.name} 
-        key={tableName} setVisibleMenu={setDisplayedMenu} visibleMenu={displayedMenu}/>)}
-    </ul>
-  )
 }
 
 
@@ -438,122 +396,133 @@ export function NewTypeForm() {
 }
 
 
-function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]}}) {
-  const [visible, setVisible] = useState(false);
-  const setDisplayData = useContext(DataDisplayFn);
-
-
-  return (
-    <>
-      <button onClick={() => setVisible(!visible)}>{schemaDetails.name}</button>
-      {visible && (
-        <>
-          <SchemaTables schemaDetails={schemaDetails}/>
-          <button id="add-table-btn" onClick={() => setDisplayData({type: "create-table-form", data: null})}>Add Table</button>
-          <button onClick={() => setDisplayData({type: "new-type-form", data: null})}>Add type</button>
-        </>)
-      }
-    </>
-  )
-}
-
-
-function DataBase({dbName, initDb}: {dbName: string, initDb: string}) {
-  const schemas = useRef<{name: string; tables: string[];}[]>([]);
-  const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
-
-  useEffect(() => {
-    if (initDb === dbName){
-      fetchDbDetails()
-    }
-  }, [dbName])
-
-  function fetchDbDetails() {
-    fetch("http://localhost:4900/get-db-details", {
-      credentials: "include",
-      headers: {"Content-Type": "application/json"},
-      method: "POST",
-      body: JSON.stringify({targetDb: dbName})
-    })
-    .then(response => response.json())
-    .then(responseBody => {
-      if (responseBody.errorMsg) {
-        alert(responseBody.errorMsg)
-      }else {
-        schemas.current = responseBody.data
-        setDbObjectsVisible(true)
-      }
-    });
-  }
-
-  function toggleChildrenVisibilty() {
-    if (dbObjectsVisible){
-      setDbObjectsVisible(false);
-      return;
-    }else if (schemas.current.length === 0) {
-      fetchDbDetails()
-    }else {
-      setDbObjectsVisible(true)
-    }
-  }
-
-  return (
-    <li>
-      <button onClick={toggleChildrenVisibilty}>{dbName}</button>
-      <TargetDb.Provider value={dbName}>
-        {dbObjectsVisible && (
-          <ul>
-            {schemas.current.map(
-              (schema) => (
-                <li key={schema.name}>
-                  <Schema schemaDetails={schema} />
-                </li>
-            ))}
-          </ul>
-        )}
-      </TargetDb.Provider>
-    </li>
-  )
-}
-
-
-export function DataBases({clusterDbs, initDb}:{clusterDbs: string[], initDb: string}) {
-  const listItems = [];
-  for (let dbName of clusterDbs) {
-    listItems.push(<DataBase dbName={dbName} key={dbName} initDb={initDb}/>)
-  }
-  return (
-    <section id="cluster-dbs">
-      <h2>Databases</h2>
-      <ul>
-        {listItems}
-      </ul>
-    </section>
-  )
-}
-
 
 interface GenericQueryData {
   rows: any[];
   fields: string[];
 }
 
-export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
-  const listItems = dbClusterRoles.map(roleName => <li key={roleName}><button>{roleName}</button></li>)
+
+function Header({username, connectedDb} : {username: string, connectedDb: string}) {
   return (
-    <section id="cluster-roles">
-      <h2>Roles</h2>
-      <ul>
-        {listItems}
-      </ul>
-    </section>
-    
+    <header>
+     <b>Logged in user: </b>{username}
+     <b> Connected database: </b>{connectedDb}
+    </header>
   )
 }
 
+interface ConnectionDetail {
+  user: string;
+  application_name: string;
+  state: string;
+  client_hostname: string;
+  client_port: number
+}
+
+interface DbDetails {
+  template: boolean;
+  encoding: string;
+  allowedConnectionsNum: number;
+  currentConnections: ConnectionDetail[]
+}
+
+/*
+Roles
+  Rolen - grant and revoke privileges
+installed languages
+Databses - space usage
+
+  DataBasn
+    schenma_n
+      tables
+      views
+      foreign data wappers
+      foreign tables
+      materialised views
+      functions
+      sequences
+
+*/
+
+
+export function DashBoard() {
+  return  (
+    <section>
+      <p><strong>Connected User:</strong>{}</p>
+      <p><strong>Connected Database:</strong>{}</p>
+     <h2>Current connections</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>user</th>
+            <th>application name</th>
+            <th>client_hostname</th>
+            <th>client_port</th>
+            <th>state</th>
+          </tr>
+        </thead>
+        <tbody></tbody>{/*Implement button that closes each displayed connection*/}
+      </table>
+      <section>
+        <h2>Run time configs</h2>
+        <p>Config1: <span>value</span> <button>set value</button></p>
+      </section>
+      <section>
+        <h2>Backups</h2>
+      </section>
+    </section>
+  )
+}
+
+function DbDetails() {
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    if (loading) {
+      fetch("http:localhost:4900/")
+    }
+
+  })
+  return (
+    <section>
+      {loading ? <strong><i>Loading...</i></strong> : <>
+        <h1>Db details</h1><span>Connected {/* show only if connected*/}</span>
+        <p><strong>template?</strong></p>
+        <p><strong>encoding: </strong>{}</p>
+        <p><strong>No of allowed connections: </strong>{}</p>
+        
+        <h2>Db Objects</h2>
+        <i>To implement...</i>
+      </>}
+    </section>
+  )
+}
+
+function RoleDetails({roleName} : {roleName: string}) {
+  // const [roleDetails, setRoleDetails] = useState<any>({})
+  return (
+    <section>
+      <h1>{roleName}</h1>
+       <div>SuperUser?</div>
+       <div>Logged in?</div>
+       <section>
+         <h2>Privileges</h2>
+         <div>Privilege 1 <button>revoke</button></div>
+         <button>Grant privilege</button>
+       </section>
+       <section>
+         <h2>Objects Owned</h2>
+         <i>To implement maybe...</i>
+       </section>
+      <button disabled>DROP ROLE</button>
+      <button>DROP OWNED</button>
+    </section>)
+}
+
+
+
 interface TableDetails {
   tableName: string;
-  targetDb: string;
   schemaName: string
 }
 
@@ -564,7 +533,7 @@ function sendDropTableReq(dbName: string, tableName: string, cascade: boolean): 
     },
     credentials: "include",
     method: "POST",
-    body: JSON.stringify({targetDb: dbName, tableName, cascade}) // TODO: limit the amount of data sent back
+    body: JSON.stringify({tableName, cascade}) // TODO: limit the amount of data sent back
   }).then(response => response.json())
 }
 
@@ -770,20 +739,20 @@ function AlterTableForm({tableDetails, columnsDetails} : {tableDetails: TableDet
   )
 }
 
-export function TableDisplay({tableDetails, displayType} : {tableDetails: TableDetails, displayType: string}) {
+export function TableRowsDisplay({ displayType } : {displayType: string}) {
   const [displayData, setDisplayData] = useState<{displayName: string, data: GenericQueryData}|null>(null); // add display type on errors
   const [rowEditMode, setRowEditMode] = useState(false);
   const allTableDetails = useRef<GenericQueryData|null>(null)
-  const updateMainDisplay = useContext(DataDisplayFn)
+  const tableDetails = useSelector(selectTargetTableDetails) 
+  const dispatch = useDispatch()
 
   useEffect(() => {
-
     const longQuery = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE 
                         table_schema = '${tableDetails.schemaName}' AND table_name = '${tableDetails.tableName}';`
     const qualifiedTableName = `"${tableDetails.schemaName}"."${tableDetails.tableName}"`;
     Promise.all([
-      getData(tableDetails.targetDb, `SELECT ctid, * FROM ${qualifiedTableName};`), 
-      getData(tableDetails.targetDb, longQuery)
+      getData(`SELECT ctid, * FROM ${qualifiedTableName};`), 
+      getData(longQuery)
     ])
     .then(values => {
       if (values[0].errorMsg){
@@ -804,12 +773,12 @@ export function TableDisplay({tableDetails, displayType} : {tableDetails: TableD
     });
   }, [displayType])
 
-  async function dropTableAction({tableName, targetDb, schemaName}: TableDetails, cascade: boolean) {
-    const results = await sendDropTableReq(targetDb, `"${schemaName}"."${tableName}"`, cascade);
+  async function dropTableAction({tableName, schemaName}: TableDetails, cascade: boolean) {
+    const results = await sendDropTableReq(`"${schemaName}"."${tableName}"`, cascade);
     if (results.errorMsg){
       alert(results.errorMsg)
     }else{
-      updateMainDisplay({type: "", data: null})
+      dispatch(pageChanged({newPage: "dashboard"}))
       alert(`Table '${tableName}' deleted successfully!`)
     }
   }
@@ -835,7 +804,7 @@ export function TableDisplay({tableDetails, displayType} : {tableDetails: TableD
           )}
 
         {displayData && displayData.displayName !== "Alter Table" && (
-          <TopLevelTableDetails.Provider value={tableDetails}>
+          <>
             <h1>{displayData.displayName}</h1>
             <button className={rowEditMode ? "active" : ""} onClick={changeRowEditMode}>Rows edit mode</button>
             <button onClick={DisplayAlterTableForm} disabled={allTableDetails.current ? false : true}>alter table</button>
@@ -853,10 +822,10 @@ export function TableDisplay({tableDetails, displayType} : {tableDetails: TableD
                 editMode={rowEditMode}
                 columnData={allTableDetails.current as GenericQueryData}/>
             </table>
-            <button onClick={() => updateMainDisplay({type: "insert-form", data: tableDetails})}>insert</button>
+            <button onClick={() => dispatch(pageChanged({newPage: "insert-form"}))}>insert</button>
             <button onClick={() => dropTableAction(tableDetails, true)}>Drop Table Cascade</button>
             <button onClick={() => dropTableAction(tableDetails, false)}>Drop Table Restrict</button>
-          </TopLevelTableDetails.Provider>
+          </>
         )}</>
       ) : <h2>Loading...</h2>}
     </section>
