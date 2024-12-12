@@ -6,6 +6,8 @@ const cookieParser = require('cookie-parser');
 const app = express();
 const PortNo = 4900;
 
+let client = null;
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -14,10 +16,23 @@ function logRequestDetails(req, res, next) {
 	next()
 }
 
-function validateConnectionStr(req, res, next) {
-	if (!req.cookies.serverSpecs && req.originalUrl !== "/verify-connect-str") {
+// to implement later
+function sessionIdIsValid(sessionId: string) {
+	return true
+}
+
+function validateConnectionStr(req, res, next) { // change name later
+	if (req.originalUrl === "/connect-db") {
+		next()
+		return;
+	}
+	if (!client) {
+		res.status(400).json({msg: "Connect to the db first!", data: null})
+		return
+	}
+	if (!req.cookies.sessionId || !sessionIdIsValid(req.cookies.sessionId)) {
 		console.log("Invalid connection string")
-		res.status(400).json({errorMsg: "Bad Request! No connection string was sepcified", data: null})
+		res.status(401).json({msg: "Unauthorised", data: null})
 	}else {
 		next()
 	}
@@ -43,42 +58,21 @@ app.use(["/query-table", "/create-table"], (req, res, next) => {
 	}else next();
 })
 
-async function processReq(connectionStr, sqlQuery) {
-	const pool = setupDbParams(connectionStr)
-	let client;
-	try {
-		client = await pool.connect();
-	}catch(error) {
-		// add better error message i.e server doesn't support ssl, invalid connection strings
-		console.log(error)
-		return {errorMsg: error.message, data: null};
-	} 
-
+async function processReq(sqlQuery) {
 	let data = null;
 	try {
 		data = await client.query(sqlQuery);
 		// console.log(data);
-		return {errorMsg: null, data};
+		return {msg: null, errorMsg: null, data};
 	}catch(error) {
 		console.log(error.message, error.code)
-		return {errorMsg: `Something went wrong! Error: ${error.code}`, data};
-	}finally {
-		client.release();
+		return {msg: null, errorMsg: `Something went wrong! Error: ${error.code}`, data};
 	}
 }
 
+async function getDbDetails() {
 
-async function getDbDetails(connectionStr) {
-	const pool = setupDbParams(connectionStr)
-	let client;
 	try {
-		client = await pool.connect();
-	}catch(error) {
-		console.log(error)
-		return {errorMsg: error.message, data: null}
-	}
-
-	try { // fix double table bug
 		let schemaData = await client.query(
 			"SELECT table_schema, table_name FROM information_schema.tables;"
 			);
@@ -103,19 +97,29 @@ async function getDbDetails(connectionStr) {
 			}else schemaObj.tables.push(schemaData.rows[i][tableNameKey])
 		}
 		
-		return {errorMsg: null, data};
+		return {msg: null, errorMsg: null, data};
 	}catch(error) {
 		console.log(error)
-		client.release();
-		return {errorMsg: "Something went wrong!", data: null};
-	}finally {
-		client.release();
+		return {msg: null, errorMsg: "Something went wrong!", data: null};
 	}
 }
 
+app.post("/connect-db", async (req, res) => { // todo: cleanly handle reconnections
+	const pool = setupDbParams(req.body.connectionString)
+	try {
+		client = await pool.connect();
+		res.cookie('sessionId', 'super-secure-unimplemented-id',
+		{httpOnly: true, secure: true, maxAge: 4.32e7}) // 12 hours, change to a session cookie later
+		res.status(200).json({msg: "connection successful", errorMsg: null, data: null})
+	}catch(error) {
+		// add better error message i.e server doesn't support ssl, invalid connection strings
+		console.log(error)
+		res.status(400).json({msg: null, errorMsg: error.message, data: null});
+	}
+})
+
 app.post("/update-table", async (req, res) => {
-	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
-	const results = await processReq(connectionStr, req.body.query)
+	const results = await processReq(req.body.query)
 	let updates = null;
 
 	for (let data of results.data) {
@@ -126,43 +130,47 @@ app.post("/update-table", async (req, res) => {
 	}
 
 	if (results.errorMsg) {
-		res.status(400).json({errorMsg: results.errorMsg, data: null})
+		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
 	}else {
 		const processedData = {rows: updates.rows, fields: updates.fields.map(field => field.name)};
-		res.status(200).json({errorMsg: null, data: processedData})
+		res.status(200).json({msg: null, errorMsg: null, data: processedData})
 	}
+})
 
+app.post("/alter-table", async (req, res) => {
+	const results = await processReq(req.body.query);
+	if (results.errorMsg) {
+		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
+	}else
+		res.status(200).json({msg: null, data: "", errorMsg: null})
 })
 
 app.post("/mutate-dbData", async (req, res) => {
-	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
-	const results = await processReq(connectionStr, req.body.query);
+	const results = await processReq(req.body.query);
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
 	}else {
 		if (req.body.queryType === "insert")
-			res.status(200).json({rowCount: results.data.rowCount});
+			res.status(200).json({data: null, errorMsg: null, msg: results.data.rowCount});
 		else
-			res.status(200).json({data: "", errorMsg: null})
+			res.status(200).json({data: null, errorMsg: null, msg: null})
 	}
 })
 
 app.post("/query-table", async (req, res) => { // Add robust processing for relations that doesn't exist
-	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
-	// console.log(req.body.query, 'tf?: ', req.body.targetDb, ' :?tf')
-	const results = await processReq(connectionStr, req.body.query)
+	console.log(req.body.query);
+	const results = await processReq(req.body.query)
 	if (results.errorMsg) {
-		res.status(400).json({errorMsg: results.errorMsg, data: null})
+		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
 	}else {
 		const processedData = {rows: results.data.rows, fields: results.data.fields.map(field => field.name)};
-		res.status(200).json({errorMsg: null, data: processedData})
+		res.status(200).json({msg: null, errorMsg: null, data: processedData})
 	}
 })
 
 app.post("/drop-table", async (req, res) => {
-	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
 	const cascadeString = req.body.cascade ? "CASCADE" : "RESTRICT";
-	const results = await processReq(connectionStr, `DROP TABLE ${req.body.tableName} ${cascadeString};`)
+	const results = await processReq(`DROP TABLE ${req.body.tableName} ${cascadeString};`)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg})
 	}else {
@@ -171,40 +179,37 @@ app.post("/drop-table", async (req, res) => {
 })
 
 app.post("/delete-row", async (req, res) => {
-	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
 	const {targetTable, rowId} = req.body
-	const results = await processReq(connectionStr, `DELETE FROM ${targetTable} WHERE ctid = '${rowId}';`)
+	const results = await processReq(`DELETE FROM ${targetTable} WHERE ctid = '${rowId}';`)
 	if (!results.errorMsg) {
-		res.status(200).json({errorMsg: null})
+		res.status(200).json({errorMsg: null, msg: null, data: null})
 	}else {
-		res.status(400).json({errorMsg: results.errorMsg})
+		res.status(400).json({errorMsg: results.errorMsg, msg: null, data: null})
 	}
 })
 
-app.post('/get-db-details', async (req, res) => {
-	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
-	const processedData = await getDbDetails(connectionStr)
+app.post('/get-db-details', async (_req, res) => {
+	const processedData = await getDbDetails()
 	if (processedData.errorMsg) {
-		res.status(400).json({errorMsg: processedData.errorMsg, data: null})
+		res.status(400).json({errorMsg: processedData.errorMsg, data: null, msg: null})
 	}else res.status(200).json(processedData);
 })
 
-app.post("/", async (req, res) => {
-	let connectionStr = `${req.cookies.serverSpecs}/${req.body.targetDb}`
-	const results = await processReq(connectionStr, "SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;")
+app.post("/", async (_req, res) => {
+	const results = await processReq("SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;")
 	if (results.errorMsg) {
-		res.status(400).json({errorMsg: results.errorMsg, data: null})
+		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
 	}else {
 		const dbData = results.data;
 		const responseData = {roles: [], dataBases: []};
 		responseData.roles = dbData[0].rows.map(row => row[dbData[0].fields[0].name]);
 		responseData.dataBases = dbData[1].rows.map(row => row[dbData[1].fields[0].name]);
-		res.status(200).json({errorMsg: null, data: responseData})
+		res.status(200).json({errorMsg: null, data: responseData, msg: null})
 	}
 	
 })
 
-app.post("/verify-connect-str", async (req, res) => {
+/*app.post("/verify-connect-str", async (req, res) => { // TO BE REMOVED
 	let connectionStr = `${req.body.serverSpecs}/${req.body.targetDb}`
 	const pool = setupDbParams(connectionStr);
 	let client, statusCode:number;
@@ -218,11 +223,11 @@ app.post("/verify-connect-str", async (req, res) => {
 	}finally {
 		client.release();
 	}
-	if (statusCode === 200) {
+	if (statusCode === 200) { // make it an encrypted session cookie?
 		res.cookie('serverSpecs', req.body.serverSpecs,
 		{httpOnly: true, secure: true, maxAge: 6.04e8}) // 7 days
 	}
 	res.status(statusCode).send()
-})
+})*/
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)
