@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, createContext, useContext } from "react"
 import { useDispatch } from "react-redux"
 import { type ServerDetails, tabCreated } from "./store"
 
-const ServerDetails = createContext({connString: "", connected: false, connectedDbs: [] as string[]})
+export const ServerDetailsContext = createContext({connString: "", connected: false, connectedDbs: [] as string[]})
 const ParentDb = createContext("")
 
 interface TableBtnProps {
@@ -14,7 +14,7 @@ interface TableBtnProps {
 
 
 function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnProps) {
-  const serverDetails = useContext(ServerDetails)
+  const serverDetails = useContext(ServerDetailsContext)
   const parentDb = useContext(ParentDb)
   const dispatch = useDispatch()
   const dataDetails = {tableName, schemaName, dbName: parentDb}
@@ -23,7 +23,7 @@ function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnP
     <li key={tableName} className="db-table-rep">
       <button className="db-table-btn" onClick={()=>{
         dispatch(
-          tabCreated({tabType: "table-info", tabName: tableName, serverConnString: serverDetails.connString, dataDetails})
+          tabCreated({tabType: "table-info", tabName: tableName, serverConnString: serverDetails.connString+`/${parentDb}`, dataDetails})
         )}
       }>
         {tableName}
@@ -36,7 +36,7 @@ function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnP
       {visibleMenu === tableName && (
         <div className="db-table-menu">
           <button onClick={()=>dispatch(
-            tabCreated({tabType: "insert-form", tabName: tableName, serverConnString: serverDetails.connString, dataDetails})
+            tabCreated({tabType: "insert-form", tabName: tableName, serverConnString: serverDetails.connString+`/${parentDb}`, dataDetails})
           )}>Insert</button>
           <button>Delete</button>
         </div>
@@ -89,7 +89,8 @@ function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]
 function DataBase({dbName}: {dbName: string}) {
   const schemas = useRef<{name: string; tables: string[];}[]>([]);
   const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
-  const connectedServerDetails = useContext(ServerDetails)
+  const connectedServerDetails = useContext(ServerDetailsContext)
+  const connectionString = connectedServerDetails.connString + '/' + dbName
 
   useEffect(() => {
     if (connectedServerDetails.connectedDbs.includes(dbName)){
@@ -102,7 +103,7 @@ function DataBase({dbName}: {dbName: string}) {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({targetDb: dbName})
+      body: JSON.stringify({connectionString})
     })
     .then(response => response.json())
     .then(responseBody => {
@@ -175,21 +176,24 @@ export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
   )
 }
 
-const dashboardUpdate = {
-  tabName: "dashboard",
-  tabType: "dashboard",
-  serverConnString: "",
-  tabId: "",
-  dataDetails: {
-    dbName: "",
-    tableName: "",
-    schemaName: "",
-  }
-}
 
 export default function ServerRep({ serverDetails } : {serverDetails: ServerDetails}) {
   const [data, setData] = useState<{roles: string[], dataBases: string[]}>({roles: [], dataBases: []});
   const dispatch = useDispatch()
+  const connectionString = serverDetails.connString + '/' + serverDetails.connectedDbs[0]
+
+  const dashboardUpdate = {
+    tabName: "dashboard",
+    tabType: "dashboard",
+    serverConnString: connectionString,
+    tabId: "",
+    dataDetails: {
+      dbName: serverDetails.connectedDbs[0],
+      tableName: "",
+      schemaName: "",
+    }
+  }
+
 
 
   useEffect(() => {
@@ -197,14 +201,14 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: "" 
+      body: JSON.stringify({connectionString}) 
     })
     .then(response => {
       switch (response.status) {
         case 200:
           return response.json()
         default:
-          dispatch(tabCreated(dashboardUpdate));
+          dispatch(tabCreated(dashboardUpdate));// change this later
       }
       response.json()
     })
@@ -215,8 +219,8 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
   }, [])
   
   return (
-    <ServerDetails.Provider value={serverDetails}>
-      <section id="cluster-lvl-objs">
+    <ServerDetailsContext.Provider value={serverDetails}>
+      <li id="cluster-lvl-objs">
         {data && (
           <>
             <button>New SQL console</button>
@@ -224,7 +228,7 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
             <DataBases clusterDbs={data.dataBases} />
           </>
         )}
-      </section>
-    </ServerDetails.Provider>
+      </li>
+    </ServerDetailsContext.Provider>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useContext } from "react"
 import { getData } from "./dbDataDisplay"
 import { selectCurrentTab } from "../store"
 import { useDispatch, useSelector } from "react-redux"
@@ -8,12 +8,13 @@ import { useDispatch, useSelector } from "react-redux"
 
 function TablesWithSameColumnName({columnName, tablesData, updateDisplay} 
   : {tablesData: GenericQueryData, columnName: string, updateDisplay: (data: Updater) => void}) {
+  const serverConnString = useSelector(selectCurrentTab).serverConnString
 
   const tableDetails = useSelector(selectCurrentTab).dataDetails
   let targetTables: JSX.Element[] = [];
   function getAndUpdateData(targetTable: string) {
     const query = `SELECT * FROM "${tableDetails.tableName}" INNER JOIN ${targetTable} USING("${columnName}");`
-    getData(query)
+    getData(query, serverConnString)
     .then(response => {
       if (!response.errorMsg) {
         updateDisplay({displayName: `${tableDetails.tableName} INNER JOIN ${targetTable} USING ${columnName};`, data: response.data})
@@ -87,6 +88,7 @@ interface QueryRow {
 
 function DataRow({rowData, headersList, updateData} : { rowData: QueryRow, headersList: string[], updateData: (exc: string)=>void}) {
   const rowId = useRef("");
+  const serverConnString = useSelector(selectCurrentTab).serverConnString
 
   const {schemaName, tableName} = useSelector(selectCurrentTab).dataDetails
   let row:any = [];
@@ -106,7 +108,7 @@ function DataRow({rowData, headersList, updateData} : { rowData: QueryRow, heade
       headers: {
         "content-type": "application/json"
       },
-      body: JSON.stringify({rowId: rowId.current, targetTable: `"${schemaName}"."${tableName}"`})
+      body: JSON.stringify({connectionString: serverConnString, rowId: rowId.current, targetTable: `"${schemaName}"."${tableName}"`})
     })
     .then(response => response.json())
     .then(responseData => {
@@ -241,14 +243,14 @@ function constructQuery(dataInput: DataUpdate[], tableName: string) {
 }
 
 // getData is very similar to this except the endpoint, I should probably edit it to accept endpoints as parameters
-function sendUpdateQuery(query: string) {
+function sendUpdateQuery(query: string, serverConnString: string) {
   return fetch("http://localhost:4900/update-table", {
     headers: {
       "Content-Type": "application/json"
     },
     credentials: "include",
     method: "POST",
-    body: JSON.stringify({query}) // TODO: limit the amount of data sent back
+    body: JSON.stringify({connectionString: serverConnString, query}) // TODO: limit the amount of data sent back
   }).then(response => response.json())
 }
 
@@ -257,6 +259,7 @@ function TableBody({data, editMode, columnData, updateDisplay} : {data: GenericQ
   const {tableName, schemaName } = useSelector(selectCurrentTab).dataDetails
   let rows:JSX.Element[] = [];
   const editedRowsData = useRef<DataUpdate[]>(initArray(rowsData.length));
+  const serverConnString = useSelector(selectCurrentTab).serverConnString
 
   function updateEditedRowsData(newData: {ctid: string, updates: [string, string][]}, index: number) {
     editedRowsData.current[index] = newData;
@@ -270,7 +273,7 @@ function TableBody({data, editMode, columnData, updateDisplay} : {data: GenericQ
     if (editedRowsData.current.some(data => data.updates.length > 0)) {
       // todo: Implement not sending on input validation error from InputCell
       const updateQuery = constructQuery(editedRowsData.current, tableName)
-      sendUpdateQuery(updateQuery+`SELECT ctid, * FROM "${schemaName}"."${tableName}";`)
+      sendUpdateQuery(updateQuery+`SELECT ctid, * FROM "${schemaName}"."${tableName}";`, serverConnString)
       .then(response => {
         if (response.errorMsg) {
           alert(response.errorMsg)
@@ -477,7 +480,7 @@ function DbDetails() {
   const [loading, setLoading] = useState(false)
   useEffect(() => {
     if (loading) {
-      fetch("http:localhost:4900/")
+      // fetch("http:localhost:4900/")
     }
 
   })
@@ -524,14 +527,14 @@ interface TableDetails {
   schemaName: string
 }
 
-function sendDropTableReq(dbName: string, tableName: string, cascade: boolean): Promise<{errorMsg: string|null}> {
+function sendDropTableReq(dbName: string, tableName: string, cascade: boolean, serverConnString: string): Promise<{errorMsg: string|null}> {
   return fetch("http://localhost:4900/drop-table", {
     headers: {
       "Content-Type": "application/json"
     },
     credentials: "include",
     method: "POST",
-    body: JSON.stringify({tableName, cascade}) // TODO: limit the amount of data sent back
+    body: JSON.stringify({connectionString: tableName, cascade}) // TODO: limit the amount of data sent back
   }).then(response => response.json())
 }
 
@@ -741,7 +744,8 @@ export function TableRowsDisplay({ displayType } : {displayType: string}) {
   const [displayData, setDisplayData] = useState<{displayName: string, data: GenericQueryData}|null>(null); // add display type on errors
   const [rowEditMode, setRowEditMode] = useState(false);
   const allTableDetails = useRef<GenericQueryData|null>(null)
- const tableDetails = useSelector(selectCurrentTab).dataDetails
+  const serverConnString = useSelector(selectCurrentTab).serverConnString
+  const tableDetails = useSelector(selectCurrentTab).dataDetails
   const dispatch = useDispatch()
 
   useEffect(() => {
@@ -749,8 +753,8 @@ export function TableRowsDisplay({ displayType } : {displayType: string}) {
                         table_schema = '${tableDetails.schemaName}' AND table_name = '${tableDetails.tableName}';`
     const qualifiedTableName = `"${tableDetails.schemaName}"."${tableDetails.tableName}"`;
     Promise.all([
-      getData(`SELECT ctid, * FROM ${qualifiedTableName};`), 
-      getData(longQuery)
+      getData(`SELECT ctid, * FROM ${qualifiedTableName};`, serverConnString), 
+      getData(longQuery, serverConnString)
     ])
     .then(values => {
       if (values[0].errorMsg){
@@ -772,7 +776,8 @@ export function TableRowsDisplay({ displayType } : {displayType: string}) {
   }, [displayType])
 
   async function dropTableAction({tableName, schemaName}: TableDetails, cascade: boolean) {
-    const results = await sendDropTableReq(`"${schemaName}"."${tableName}"`, cascade);
+    const dbName = useContext(ParentDb)
+    const results = await sendDropTableReq(dbName, `"${schemaName}"."${tableName}"`, cascade, serverConnString);
     if (results.errorMsg){
       alert(results.errorMsg)
     }else{

@@ -1,4 +1,5 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useContext } from "react"
+import { ServerDetailsContext } from "../sideNavBar"
 
 
 // escapes special sql chracters in identifiers
@@ -382,6 +383,7 @@ function ColumnDetails({visibility} : {visibility: "visible"|"hidden"|"collapse"
 export function CreateTable() {
   const [display, setDisplay] = useState<"general"|"columns"|"sql">("general")
   const formRef = useRef<HTMLFormElement>(null);
+  const serverConnString = useContext(ServerDetailsContext).connString
 
   function createTable(event) {
     event.preventDefault();
@@ -391,7 +393,7 @@ export function CreateTable() {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({query, queryType: "create"}) 
+      body: JSON.stringify({connectionString: serverConnString, query, queryType: "create"}) 
     })
     .then(response => response.json())
     .then(responseBody => {

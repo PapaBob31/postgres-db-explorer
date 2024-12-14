@@ -5,14 +5,14 @@ import { useSelector, useDispatch } from "react-redux"
 import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched } from "../store"
 
 
-export function getData(query: string) {
+export function getData(query: string, serverConnString: string) {
   return fetch("http://localhost:4900/query-table", {
     headers: {
       "Content-Type": "application/json"
     },
     credentials: "include",
     method: "POST",
-    body: JSON.stringify({query}) // TODO: limit the amount of data sent back
+    body: JSON.stringify({connectionString: serverConnString, query}) // TODO: limit the amount of data sent back
   }).then(response => response.json())
 }
 
@@ -90,10 +90,11 @@ function InsertForm() {
   const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
   const [insertRowKeys, setInsertRowKeys] = useState<number[]>([1]);
   const freeKeys = useRef<number[]>([]);
-  const dispatch = useDispatch()
+  // const dispatch = useDispatch()
+  const serverConnString = useSelector(selectCurrentTab).serverConnString
 
   useEffect(() => {
-    getData(query)
+    getData(query, serverConnString)
     .then(responseData => setColumnData(responseData.data))
   }, [])
 
@@ -128,7 +129,7 @@ function InsertForm() {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
         alert(`${responseBody.msg} new rows uploaded successfully!`)
-        dispatch(pageChanged({newPage: "table-rows-data"}))
+        // dispatch(pageChanged({newPage: "table-rows-data"}))
       }
     })
   }
@@ -219,13 +220,13 @@ function TabBtn( { tabDetail } : {tabDetail: OpenedTabDetail}) {
 function Tabs({ tabDetails } : {tabDetails: OpenedTabDetail[]}) {
   return (
     <ul>
-      {tabDetails.map(detail => <TabBtn tabDetail={detail}/>)};
+      {tabDetails.map(detail => <TabBtn tabDetail={detail} key={detail.tabId}/>)};
     </ul>
   )
 }
 
 function DataDisplay() {
-  const openedTabs  =  useSelector(selectTabs).openedTabs
+  const openedTabs = useSelector(selectTabs).openedTabs
   const currentTab = useSelector(selectCurrentTab);
 
   return (

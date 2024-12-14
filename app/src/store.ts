@@ -37,11 +37,11 @@ function generateUniqueId() {
 }
 
 
-const initPageDetails = {
+const serverConnectForm = {
 	tabName: "server-connect-interface",
 	tabId: generateUniqueId(),
 	tabType: "server-connect-interface",
-	serverConnStrinng: "",
+	serverConnString: "",
 	dataDetails: {
 		dbName: "", 
 		tableName: "",
@@ -50,8 +50,8 @@ const initPageDetails = {
 }
 
 const tabs: Tabs = { // must it always be in an object form?
-	currentTab: initPageDetails,
-	openedTabs: [initPageDetails]
+	currentTab: serverConnectForm,
+	openedTabs: [serverConnectForm]
 }
 
 interface Action {
@@ -76,7 +76,9 @@ const tabsSlice = createSlice({
 			if (state.openedTabs.length === 1 && state.openedTabs[0].tabName === "server-connect-interface") {
 				state.openedTabs.pop()
 			}
-			state.openedTabs.push({...action.payload, tabId: generateUniqueId()})
+			const newTabDetails = {...action.payload, tabId: generateUniqueId()}
+			state.currentTab = newTabDetails
+			state.openedTabs.push(newTabDetails)
 		},
 		tabClosed(state, action: {type: string, payload: {closedTabId: string}}) {
 			const unclosedTabs = state.openedTabs.filter((tabDetail) => tabDetail.tabId !== action.payload.closedTabId)
