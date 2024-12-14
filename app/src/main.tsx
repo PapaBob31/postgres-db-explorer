@@ -1,7 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from 'react-dom/client'
 import { Provider, useSelector } from "react-redux"
-import store, { selectCurrentTab, selectServers } from "./store"
+import store, { selectServers } from "./store"
 import ServerRep from "./sideNavBar"
 
 import ConnectDbForm from "./routes/dbConnect"
@@ -12,20 +12,23 @@ import DbDataDisplay from "./routes/dbDataDisplay"
 function Servers() {
   const servers = useSelector(selectServers);
   return (
-    <ul>
-      {servers.map(server => <li><ServerRep serverDetails={server}/></li>)}
-    </ul>
+    <section>
+      <h1>Saved Servers</h1>
+      <ul>
+        {servers.map(server => <ServerRep serverDetails={server}/>)}
+      </ul>
+    </section>
   )
 }
 
 
 function Main(){
-  const currentTab = useSelector(selectCurrentTab)
+  const servers = useSelector(selectServers);
 
   return (
     <>
       <Servers/>
-      {currentTab.tabName === "server-connect-interface" ? <ConnectDbForm /> : <DbDataDisplay />}
+      {servers.some(server => server.connected) ? <DbDataDisplay /> : <ConnectDbForm />}
     </>
   )
 }
