@@ -1,14 +1,17 @@
 import { useRef } from "react"
-import { serverConnected } from "../store"
+import { newServerConnected } from "../store"
 import { useDispatch } from "react-redux"
 
 
 interface URLParams {
+	serverName: string,
 	user: string;
 	password: string;
 	hostname: string;
 	dbname: string;
 	port: number;
+	saveConnDetails: boolean;
+	ssl: boolean
 }
 
 async function connectDb(urlParams: URLParams) {
@@ -18,7 +21,7 @@ async function connectDb(urlParams: URLParams) {
 		credentials: "include",
 		headers: {"Content-Type": "application/json"},
 		method: "POST",
-		body: JSON.stringify({connectionString})
+		body: JSON.stringify({connectionString, serverName: urlParams.saveConnDetails ? urlParams.serverName : null, ssl: urlParams.ssl})
 	})
 
 	let response;
@@ -51,24 +54,30 @@ export default function ConnectDbForm() {
 		if (!response) return;
 
 		if (response.ok) {
-			const tableDetails = {tableName: "", targetDb: urlParams.dbname, schemaName: ""}
-			dispatch(serverConnected({newPage:  "dashboard", connectedDb: urlParams.dbname, tableDetails}))
+			const connString = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:${urlParams.port}`
+			dispatch(newServerConnected({name: "unimplemented yet", connString, connected: true, connectedDbs: [urlParams.dbname]}))
 		}else {
 			alert("Invalid connection string")
 		}
 	}
 	return (
-		<form method="post" ref={formRef} onSubmit={connect}>
-			<label>User</label>
+		<form id="server-connect-form" method="post" ref={formRef} onSubmit={connect}>
+			<label>Server Name</label>
+			<input type="text" name="serverName" required/>
+			<label>User</label>servername
 			<input type="text" name="user" required/>
 			<label>Password</label>
 			<input type="password" name="password" required/>
 			<label>Host name</label>
 			<input type="text" name="hostname" required/>
-			<label>Db name</label>
-			<input type="text" name="dbname" required/>
 			<label>Port number</label>
 			<input type="number" name="port" min="1024" max="65535" required/>
+			<label>Db name</label>
+			<input type="text" name="dbname"/>
+			<label>SSl</label>
+			<input type="checkbox" name="ssl"/>
+			<label>Save connection details</label>
+			<input type="checkbox" checked name="saveConnDetails" />
 			<button type="submit">Connect</button>
 		</form>
 	)
