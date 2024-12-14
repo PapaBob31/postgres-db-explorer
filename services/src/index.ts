@@ -1,30 +1,51 @@
-import setupDbParams from "./utils/connect-db"
-import { Pool } from "pg"
-
-interface PoolObj {
-	connectionStr: string;
-	pool: any
-}
-
-const pools:PoolObj[] = []
-
-function getPool(connectionStr: string, ssl: boolean) {
-	for (const pool of pools) {
-		if (pool.connectionStr === connectionStr)
-			return pool;
-	}
-	const newPool = new Pool({connectionStr, ssl})
-	pools.push({connectionStr, pool: newPool})
-	return newPool
-}
-
+// import setupDbParams from "./utils/connect-db"
+const { Pool } = require("pg")
 const express = require("express");
 // const cors = require("cors") // ?
 const cookieParser = require('cookie-parser');
 const app = express();
 const PortNo = 4900;
 
-let client = null;
+interface PoolObj {
+	connectionStr: string;
+	pool: any
+}
+// don't forget to implement clean exit
+const pools:PoolObj[] = []
+
+function getPool(connectionStr: string) {
+	for (const pool of pools) {
+		if (pool.connectionStr === connectionStr)
+			return pool.pool;
+	}
+	return null
+}
+
+async function createNewPool(connectionString: string, ssl: boolean) {
+	let newPool = new Pool({connectionString, ssl})
+	let testClient;
+
+	try { // test if connectionString is valid
+		testClient = await newPool.connect()
+		pools.push({connectionStr: connectionString, pool: newPool})
+		await testClient.release()
+	}catch(err) {
+		console.log(err)
+		newPool = null;
+	}
+	// console.log("inside create pool", connectionStri)
+	return newPool
+}
+
+async function createPoolIfNotExists(connectionStr: string, ssl: boolean) {
+	const existingPool = getPool(connectionStr)
+	if (existingPool) {
+		return existingPool
+	}
+
+	return await createNewPool(connectionStr, ssl)
+}
+
 
 app.use(express.json());
 app.use(cookieParser());
@@ -44,13 +65,16 @@ function validateConnectionStr(req, res, next) { // change name later
 		next()
 		return;
 	}
-	if (!client) {
-		res.status(400).json({msg: "Connect to the db first!", data: null})
-		return
+	const pool = getPool(req.body.connectionString)
+	console.log(req.body.connectionString)
+	if (!pool){
+		res.status(400).json({errorMsg: "Connect to the db first", data: null, msg: null});
+		return;
 	}
+
 	if (!req.cookies.sessionId || !sessionIdIsValid(req.cookies.sessionId)) {
 		console.log("Invalid connection string")
-		res.status(401).json({msg: "Unauthorised", data: null})
+		res.status(401).json({errorMsg: "Unauthorised", data: null, msg: null})
 	}else {
 		next()
 	}
@@ -76,7 +100,15 @@ app.use(["/query-table", "/create-table"], (req, res, next) => {
 	}else next();
 })
 
-async function processReq(sqlQuery) {
+async function processReq(sqlQuery, pool) {
+	let client;
+	try {
+		client = await pool.connect()
+	}catch(error) {
+		console.log(error) // add better error message i.e server doesn't support ssl, invalid connection strings
+		return {msg: null, errorMsg: `Something went wrong while trying to connect to server`, data: null};
+	}
+
 	let data = null;
 	try {
 		data = await client.query(sqlQuery);
@@ -85,10 +117,19 @@ async function processReq(sqlQuery) {
 	}catch(error) {
 		console.log(error.message, error.code)
 		return {msg: null, errorMsg: `Something went wrong! Error: ${error.code}`, data};
+	}finally {
+		client.release();
 	}
 }
 
-async function getDbDetails() {
+async function getDbDetails(pool) {
+	let client;
+	try {
+		client = await pool.connect()
+	}catch(error) {
+		console.log(error)
+		return {msg: null, errorMsg: `Something went wrong while getting db details`, data: null};
+	}
 
 	try {
 		let schemaData = await client.query(
@@ -119,25 +160,26 @@ async function getDbDetails() {
 	}catch(error) {
 		console.log(error)
 		return {msg: null, errorMsg: "Something went wrong!", data: null};
+	}finally {
+		client.release()
 	}
 }
 
-app.post("/connect-db", async (req, res) => { // todo: cleanly handle reconnections
-	const pool = getPool(req.body.connectionString, req.body.ssl)
-	try {
-		client = await pool.connect();
-		res.cookie('sessionId', 'super-secure-unimplemented-id',
-		{httpOnly: true, secure: true, maxAge: 4.32e7}) // 12 hours, change to a session cookie later
-		res.status(200).json({msg: "connection successful", errorMsg: null, data: null})
-	}catch(error) {
-		// add better error message i.e server doesn't support ssl, invalid connection strings
-		console.log(error)
-		res.status(400).json({msg: null, errorMsg: error.message, data: null});
+app.post("/connect-db", async (req, res) => {
+	const pool = await createPoolIfNotExists(req.body.connectionString, req.body.ssl) // readup more on this pooling stuff
+	if (!pool) {
+		res.status(400).json({msg: null, errorMsg: "Something went wrong while trying to connect to the db", data: null});
+		return;
 	}
+
+	res.cookie('sessionId', 'super-secure-unimplemented-id',
+	{httpOnly: true, secure: true, maxAge: 4.32e7}) // 12 hours, change to a session cookie later
+	res.status(200).json({msg: "connection successful", errorMsg: null, data: null})
 })
 
 app.post("/update-table", async (req, res) => {
-	const results = await processReq(req.body.query)
+	const pool = getPool(req.body.connectionString)
+	const results = await processReq(req.body.query, pool)
 	let updates = null;
 
 	for (let data of results.data) {
@@ -156,7 +198,8 @@ app.post("/update-table", async (req, res) => {
 })
 
 app.post("/alter-table", async (req, res) => {
-	const results = await processReq(req.body.query);
+	const pool = getPool(req.body.connectionString)
+	const results = await processReq(req.body.query, pool);
 	if (results.errorMsg) {
 		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
 	}else
@@ -164,7 +207,8 @@ app.post("/alter-table", async (req, res) => {
 })
 
 app.post("/mutate-dbData", async (req, res) => {
-	const results = await processReq(req.body.query);
+	const pool = getPool(req.body.connectionString)
+	const results = await processReq(req.body.query, pool);
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
 	}else {
@@ -176,8 +220,8 @@ app.post("/mutate-dbData", async (req, res) => {
 })
 
 app.post("/query-table", async (req, res) => { // Add robust processing for relations that doesn't exist
-	console.log(req.body.query);
-	const results = await processReq(req.body.query)
+	const pool = getPool(req.body.connectionString)
+	const results = await processReq(req.body.query, pool)
 	if (results.errorMsg) {
 		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
 	}else {
@@ -188,7 +232,8 @@ app.post("/query-table", async (req, res) => { // Add robust processing for rela
 
 app.post("/drop-table", async (req, res) => {
 	const cascadeString = req.body.cascade ? "CASCADE" : "RESTRICT";
-	const results = await processReq(`DROP TABLE ${req.body.tableName} ${cascadeString};`)
+	const pool = getPool(req.body.connectionString)
+	const results = await processReq(`DROP TABLE ${req.body.tableName} ${cascadeString};`, pool)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg})
 	}else {
@@ -197,8 +242,9 @@ app.post("/drop-table", async (req, res) => {
 })
 
 app.post("/delete-row", async (req, res) => {
+	const pool = getPool(req.body.connectionString)
 	const {targetTable, rowId} = req.body
-	const results = await processReq(`DELETE FROM ${targetTable} WHERE ctid = '${rowId}';`)
+	const results = await processReq(`DELETE FROM ${targetTable} WHERE ctid = '${rowId}';`, pool)
 	if (!results.errorMsg) {
 		res.status(200).json({errorMsg: null, msg: null, data: null})
 	}else {
@@ -206,15 +252,18 @@ app.post("/delete-row", async (req, res) => {
 	}
 })
 
-app.post('/get-db-details', async (_req, res) => {
-	const processedData = await getDbDetails()
+app.post('/get-db-details', async (req, res) => {
+	const pool = getPool(req.body.connectionString)
+	const processedData = await getDbDetails(pool)
 	if (processedData.errorMsg) {
 		res.status(400).json({errorMsg: processedData.errorMsg, data: null, msg: null})
 	}else res.status(200).json(processedData);
 })
 
-app.post("/", async (_req, res) => {
-	const results = await processReq("SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;")
+app.post("/", async (req, res) => {
+	const pool = getPool(req.body.connectionString)
+	const results = await processReq("SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;", pool)
+	console.log(results)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
 	}else {
