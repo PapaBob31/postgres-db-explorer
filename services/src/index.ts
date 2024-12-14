@@ -1,7 +1,25 @@
 import setupDbParams from "./utils/connect-db"
+import { Pool } from "pg"
+
+interface PoolObj {
+	connectionStr: string;
+	pool: any
+}
+
+const pools:PoolObj[] = []
+
+function getPool(connectionStr: string, ssl: boolean) {
+	for (const pool of pools) {
+		if (pool.connectionStr === connectionStr)
+			return pool;
+	}
+	const newPool = new Pool({connectionStr, ssl})
+	pools.push({connectionStr, pool: newPool})
+	return newPool
+}
 
 const express = require("express");
-const cors = require("cors") // ?
+// const cors = require("cors") // ?
 const cookieParser = require('cookie-parser');
 const app = express();
 const PortNo = 4900;
@@ -105,7 +123,7 @@ async function getDbDetails() {
 }
 
 app.post("/connect-db", async (req, res) => { // todo: cleanly handle reconnections
-	const pool = setupDbParams(req.body.connectionString)
+	const pool = getPool(req.body.connectionString, req.body.ssl)
 	try {
 		client = await pool.connect();
 		res.cookie('sessionId', 'super-secure-unimplemented-id',

@@ -1,17 +1,31 @@
 import { StrictMode } from "react"
 import { createRoot } from 'react-dom/client'
 import { Provider, useSelector } from "react-redux"
-import store, { selectCurrentPage } from "./store"
+import store, { selectCurrentTab, selectServers } from "./store"
+import ServerRep from "./sideNavBar"
 
 import ConnectDbForm from "./routes/dbConnect"
 import DbDataDisplay from "./routes/dbDataDisplay"
 
+
+
+function Servers() {
+  const servers = useSelector(selectServers);
+  return (
+    <ul>
+      {servers.map(server => <li><ServerRep serverDetails={server}/></li>)}
+    </ul>
+  )
+}
+
+
 function Main(){
-  const currentPage = useSelector(selectCurrentPage)
+  const currentTab = useSelector(selectCurrentTab)
 
   return (
     <>
-      {currentPage === "connect-db-form" ? <ConnectDbForm /> : <DbDataDisplay />}
+      <Servers/>
+      {currentTab.tabName === "server-connect-interface" ? <ConnectDbForm /> : <DbDataDisplay />}
     </>
   )
 }

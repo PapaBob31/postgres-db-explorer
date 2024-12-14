@@ -1,6 +1,4 @@
 import { useState, useRef } from "react"
-import { tableCreated } from "../store"
-import { useDispatch } from "react-redux"
 
 
 // escapes special sql chracters in identifiers
@@ -384,7 +382,6 @@ function ColumnDetails({visibility} : {visibility: "visible"|"hidden"|"collapse"
 export function CreateTable() {
   const [display, setDisplay] = useState<"general"|"columns"|"sql">("general")
   const formRef = useRef<HTMLFormElement>(null);
-  const dispatch = useDispatch()
 
   function createTable(event) {
     event.preventDefault();
@@ -401,8 +398,8 @@ export function CreateTable() {
       if (responseBody.errorMsg) {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
-        alert("Successful")
-        dispatch(tableCreated({newPage: "table-info", newTableName})) // fix schema bug, Infact the table should be created with the qualified name
+        alert(newTableName + " was created successfully")
+        // dispatch(tabSwitched({newPage: "table-info", newTableName})) // fix schema bug, Infact the table should be created with the qualified name
         // add interfce for choosing the schema the new table belongs to if not implemented yet.
       }
     })

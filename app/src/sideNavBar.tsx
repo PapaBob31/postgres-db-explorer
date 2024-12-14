@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react"
-import { useSelector, useDispatch } from "react-redux"
-import { selectCurrentDb, pageChanged } from "../store"
+import { useEffect, useRef, useState, createContext, useContext } from "react"
+import { useDispatch } from "react-redux"
+import { type ServerDetails, tabCreated } from "./store"
+
+const ServerDetails = createContext({connString: "", connected: false, connectedDbs: [] as string[]})
+const ParentDb = createContext("")
 
 interface TableBtnProps {
   schemaName: string,
@@ -9,13 +12,19 @@ interface TableBtnProps {
   visibleMenu: string
 }
 
+
 function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnProps) {
+  const serverDetails = useContext(ServerDetails)
+  const parentDb = useContext(ParentDb)
   const dispatch = useDispatch()
+  const dataDetails = {tableName, schemaName, dbName: parentDb}
 
   return (
     <li key={tableName} className="db-table-rep">
       <button className="db-table-btn" onClick={()=>{
-        dispatch(pageChanged({newPage: "table-info", tableDetails: {tableName, schemaName}}))}
+        dispatch(
+          tabCreated({tabType: "table-info", tabName: tableName, serverConnString: serverDetails.connString, dataDetails})
+        )}
       }>
         {tableName}
       </button>
@@ -26,7 +35,9 @@ function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnP
 
       {visibleMenu === tableName && (
         <div className="db-table-menu">
-          <button onClick={()=>dispatch(pageChanged({newPage: "insert-form", tableDetails: {tableName, schemaName}}))}>Insert</button>
+          <button onClick={()=>dispatch(
+            tabCreated({tabType: "insert-form", tabName: tableName, serverConnString: serverDetails.connString, dataDetails})
+          )}>Insert</button>
           <button>Delete</button>
         </div>
       )}
@@ -57,7 +68,7 @@ function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: s
 
 function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]}}) {
   const [visible, setVisible] = useState(false);
-  const dispatch =  useDispatch();
+  // const dispatch =  useDispatch();
 
   return (
     <>
@@ -65,8 +76,10 @@ function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]
       {visible && (
         <>
           <SchemaTables schemaDetails={schemaDetails}/>
-          <button id="add-table-btn" onClick={() => dispatch(pageChanged({newPage: "create-table-form"}))}>Add Table</button>
-          <button onClick={() => dispatch(pageChanged({newPage: "new-type-form"}))}>Add type</button>
+          {/*<button id="add-table-btn" onClick={() => dispatch(tabCreated({tabType: "create-table-form"}))}>Add Table</button>*/}
+          <button id="add-table-btn">Add Table</button>
+          {/*<button onClick={() => dispatch(tabCreated({tabType: "new-type-form"}))}>Add type</button>*/}
+          <button>Add type</button>
         </>)
       }
     </>
@@ -76,10 +89,10 @@ function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]
 function DataBase({dbName}: {dbName: string}) {
   const schemas = useRef<{name: string; tables: string[];}[]>([]);
   const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
-  const connectedDb = useSelector(selectCurrentDb)
+  const connectedServerDetails = useContext(ServerDetails)
 
   useEffect(() => {
-    if (connectedDb === dbName){
+    if (connectedServerDetails.connectedDbs.includes(dbName)){
       fetchDbDetails()
     }
   }, [dbName])
@@ -117,14 +130,17 @@ function DataBase({dbName}: {dbName: string}) {
     <li>
       <button onClick={toggleChildrenVisibilty}>{dbName}</button>
       {dbObjectsVisible && (
-        <ul>
-          {schemas.current.map(
-            (schema) => (
-              <li key={schema.name}>
-                <Schema schemaDetails={schema} />
-              </li>
-          ))}
-        </ul>
+        <ParentDb.Provider value={dbName}>
+          <ul>
+            {schemas.current.map(
+              (schema) => (
+                <li key={schema.name}>
+                  <Schema schemaDetails={schema} />
+                </li>
+              )
+            )}
+          </ul>
+        </ParentDb.Provider>
       )}
     </li>
   )
@@ -159,9 +175,22 @@ export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
   )
 }
 
-export default function ServerObjects() {
+const dashboardUpdate = {
+  tabName: "dashboard",
+  tabType: "dashboard",
+  serverConnString: "",
+  tabId: "",
+  dataDetails: {
+    dbName: "",
+    tableName: "",
+    schemaName: "",
+  }
+}
+
+export default function ServerRep({ serverDetails } : {serverDetails: ServerDetails}) {
   const [data, setData] = useState<{roles: string[], dataBases: string[]}>({roles: [], dataBases: []});
   const dispatch = useDispatch()
+
 
   useEffect(() => {
     fetch("http://localhost:4900", {
@@ -175,7 +204,7 @@ export default function ServerObjects() {
         case 200:
           return response.json()
         default:
-          dispatch(pageChanged({newPage: "connect-db-form"}));
+          dispatch(tabCreated(dashboardUpdate));
       }
       response.json()
     })
@@ -186,13 +215,16 @@ export default function ServerObjects() {
   }, [])
   
   return (
-    <section id="cluster-lvl-objs">
-      {data && (
-        <>
-          <Roles dbClusterRoles={data.roles} />
-          <DataBases clusterDbs={data.dataBases} />
-        </>
-      )}
-    </section>
+    <ServerDetails.Provider value={serverDetails}>
+      <section id="cluster-lvl-objs">
+        {data && (
+          <>
+            <button>New SQL console</button>
+            <Roles dbClusterRoles={data.roles} />
+            <DataBases clusterDbs={data.dataBases} />
+          </>
+        )}
+      </section>
+    </ServerDetails.Provider>
   )
 }

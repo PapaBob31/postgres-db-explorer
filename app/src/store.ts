@@ -1,49 +1,120 @@
 import { configureStore, createSlice } from "@reduxjs/toolkit"
 
-const initialState = {
-	currentPage: "connect-db-form",
-	connectedDb: "",
-	tableDetails: {
-		tableName: "", 
-		schemaName: ""
+export interface ServerDetails {
+	name: string;
+	connString: string;
+	connected: boolean;
+	connectedDbs: string[]
+}
+
+const serversDetails:ServerDetails[] = []
+
+export interface OpenedTabDetail {
+	tabName: string;
+	tabId: string;
+	tabType: string;
+	serverConnString: string;
+	dataDetails: {
+		dbName: string;
+		tableName: string;
+		schemaName: string;
 	}
 }
 
-export const pagesSlice = createSlice({
-	name: "pages",
-	initialState,
+interface Tabs {
+	currentTab: OpenedTabDetail,
+	openedTabs: OpenedTabDetail[]
+}
+
+function generateUniqueId() {
+  let key = "";
+  const alphaNumeric = "0abcdefghijklmnopqrstuvwxyz123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  for (let i=0; i<10; i++) {
+    const randIndex = Math.floor(Math.random()  * alphaNumeric.length);
+    key += alphaNumeric[randIndex];
+  }
+  return key
+}
+
+
+const initPageDetails = {
+	tabName: "server-connect-interface",
+	tabId: generateUniqueId(),
+	tabType: "server-connect-interface",
+	serverConnStrinng: "",
+	dataDetails: {
+		dbName: "", 
+		tableName: "",
+		schemaName: "",
+	}
+}
+
+const tabs: Tabs = { // must it always be in an object form?
+	currentTab: initPageDetails,
+	openedTabs: [initPageDetails]
+}
+
+interface Action {
+	type: string;
+	payload: {
+		tabName: string;
+		tabType: string;
+		serverConnString: string;
+		dataDetails: {
+			dbName: string;
+			tableName: string;
+			schemaName: string;
+		}
+	}
+}
+
+const tabsSlice = createSlice({
+	name: "openedTabs",
+	initialState: tabs,
 	reducers: {
-		serverConnected(state, action) {
-			state.currentPage = action.payload.newPage
-			state.connectedDb = action.payload.connectedDb
-			state.tableDetails = action.payload.tableDetails
+		tabCreated(state, action: Action) {
+			if (state.openedTabs.length === 1 && state.openedTabs[0].tabName === "server-connect-interface") {
+				state.openedTabs.pop()
+			}
+			state.openedTabs.push({...action.payload, tabId: generateUniqueId()})
 		},
-		pageChanged(state, action) {
-			state.currentPage = action.payload.newPage
-			if (action.payload.tableDetails)
-				state.tableDetails = action.payload.tableDetails
+		tabClosed(state, action: {type: string, payload: {closedTabId: string}}) {
+			const unclosedTabs = state.openedTabs.filter((tabDetail) => tabDetail.tabId !== action.payload.closedTabId)
+			state.openedTabs = unclosedTabs
 		},
-		tableCreated(state, action) {
-			state.currentPage = action.payload.newPage
-			state.tableDetails.tableName = action.payload.newTableName
+		tabSwitched(state, action: {type: string, payload: string}) {
+			const targetTab = state.openedTabs.find((tab) => tab.tabId === action.payload) as OpenedTabDetail;
+    		state.currentTab = targetTab
+		}
+	}
+})
+
+const serverSlice =  createSlice({
+	name: "servers",
+	initialState: serversDetails,
+	reducers: {
+		newServerConnected(state, action: {type: string, payload: ServerDetails}) {
+			// sort it first putting connected on top
+			state.push(action.payload)
 		},
-		targetDbUpdated(state, action) {
-			state.connectedDb = action.payload.newDb
-		},
-		targetTableChanged(state, action) {
-			state.tableDetails.tableName = action.payload.tableToQuery
+		newDbConnected(state, action) {
+
 		}
 	}
 })
 
 const store = configureStore({
 	reducer: {
-		pages: pagesSlice.reducer
+		tabs: tabsSlice.reducer,
+		servers: serverSlice.reducer
 	}
 })
-export default store;
-export const { serverConnected, pageChanged, tableCreated, targetDbUpdated, targetTableChanged } = pagesSlice.actions
 
-export const selectCurrentPage = (state: ReturnType<typeof store.getState>) => state.pages.currentPage
-export const selectCurrentDb = (state: ReturnType<typeof store.getState>) => state.pages.connectedDb
-export const selectTargetTableDetails = (state: ReturnType<typeof store.getState>) => state.pages.tableDetails
+export default store;
+export const { tabCreated, tabClosed, tabSwitched } = tabsSlice.actions
+export const { newServerConnected } = serverSlice.actions;
+
+export const selectTabs = (state: ReturnType<typeof store.getState>) => state.tabs
+export const selectCurrentTab = (state: ReturnType<typeof store.getState>) => state.tabs.currentTab
+export const selectServers = (state: ReturnType<typeof store.getState>) => state.servers
+

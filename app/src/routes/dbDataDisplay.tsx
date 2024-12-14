@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { TableRowsDisplay, NewTypeForm, DashBoard } from "./dbData"
 import { CreateTable } from "./newTableForm";
 import { useSelector, useDispatch } from "react-redux"
-import { selectCurrentPage, selectTargetTableDetails, pageChanged } from "../store"
-import ServerObjects from "./sideNavBar"
+import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched } from "../store"
 
 
 export function getData(query: string) {
@@ -87,7 +86,7 @@ function NewRowInput({columns, id, removeRowInput}: {columns: {column_name: stri
 
 function InsertForm() {
   const [columnData, setColumnData] = useState<any>(null);
-  const {tableName, schemaName} = useSelector(selectTargetTableDetails);
+  const {tableName, schemaName} = useSelector(selectCurrentTab).dataDetails;
   const query = `SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '${tableName}' AND table_schema = '${schemaName}';`
   const [insertRowKeys, setInsertRowKeys] = useState<number[]>([1]);
   const freeKeys = useRef<number[]>([]);
@@ -157,7 +156,7 @@ function InsertForm() {
 */
 function TableInfo({ currentDisplay } : {currentDisplay: string}) {
   const [display, setDisplay] = useState(currentDisplay)
-  const tableDetails = useSelector(selectTargetTableDetails) 
+  const tableDetails = useSelector(selectCurrentTab).dataDetails
   
   return (
     <section>
@@ -192,24 +191,53 @@ const stateDisplayMap: {[key: string]: JSX.Element} = {
   "table-rows-data": <TableInfo currentDisplay="Table Rows"/>,
   "table-columns-data": <TableInfo currentDisplay="Table Columns"/>,
   "insert-form": <InsertForm />,
-  //"table-data": <TableRowsDisplay/>
+}
+
+function TabBtn( { tabDetail } : {tabDetail: OpenedTabDetail}) {
+  const dispatch = useDispatch()
+  const currentTab = useSelector(selectCurrentTab);
+
+  function closeTab() {
+    dispatch(tabClosed({closedTabId: tabDetail.tabId}))  
+  }
+
+  function switchTabs() {
+    if (currentTab.tabId !== tabDetail.tabId) {
+      dispatch(tabSwitched(tabDetail.tabId))
+    }
+  }
+  
+  return (
+    <div onClick={switchTabs}>
+      <span>{tabDetail.tabName}</span>
+      <button onClick={closeTab}><b>x</b></button>
+    </div> 
+  )
 }
 
 
-function DataDisplay() {
-  const page = useSelector(selectCurrentPage);
+function Tabs({ tabDetails } : {tabDetails: OpenedTabDetail[]}) {
+  return (
+    <ul>
+      {tabDetails.map(detail => <TabBtn tabDetail={detail}/>)};
+    </ul>
+  )
+}
 
-  return <>{stateDisplayMap[page]}</>
+function DataDisplay() {
+  const openedTabs  =  useSelector(selectTabs).openedTabs
+  const currentTab = useSelector(selectCurrentTab);
+
+  return (
+    <section>
+      <Tabs tabDetails={openedTabs} />
+      {stateDisplayMap[currentTab.tabType]}
+    </section>
+  )
 }
 
 export default function DbDataDisplay() {
-
-  return (
-    <>
-      <ServerObjects/>
-      <DataDisplay/>
-    </>
-  )
+  return <DataDisplay/>
 }
 
 

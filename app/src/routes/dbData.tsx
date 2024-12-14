@@ -1,17 +1,15 @@
 import { useState, useEffect, useRef } from "react"
 import { getData } from "./dbDataDisplay"
-import { pageChanged, selectTargetTableDetails } from "../store"
+import { selectCurrentTab } from "../store"
 import { useDispatch, useSelector } from "react-redux"
 
-
-// TODO: table details should just be in a context
 // Turn identifiers to quoted identifiers where appropriate
 // Define the type of results to be returned in a fetch request
 
 function TablesWithSameColumnName({columnName, tablesData, updateDisplay} 
   : {tablesData: GenericQueryData, columnName: string, updateDisplay: (data: Updater) => void}) {
 
-  const tableDetails = useSelector(selectTargetTableDetails) 
+  const tableDetails = useSelector(selectCurrentTab).dataDetails
   let targetTables: JSX.Element[] = [];
   function getAndUpdateData(targetTable: string) {
     const query = `SELECT * FROM "${tableDetails.tableName}" INNER JOIN ${targetTable} USING("${columnName}");`
@@ -90,7 +88,7 @@ interface QueryRow {
 function DataRow({rowData, headersList, updateData} : { rowData: QueryRow, headersList: string[], updateData: (exc: string)=>void}) {
   const rowId = useRef("");
 
-  const {schemaName, tableName} = useSelector(selectTargetTableDetails) 
+  const {schemaName, tableName} = useSelector(selectCurrentTab).dataDetails
   let row:any = [];
 
   for (let i=0; i<headersList.length; i++) {
@@ -256,7 +254,7 @@ function sendUpdateQuery(query: string) {
 
 function TableBody({data, editMode, columnData, updateDisplay} : {data: GenericQueryData, columnData: GenericQueryData, editMode: boolean, updateDisplay: (d:any)=>void}) {
   const [rowsData, setRowsData] = useState(data.rows);
-  const {tableName, schemaName } = useSelector(selectTargetTableDetails)
+  const {tableName, schemaName } = useSelector(selectCurrentTab).dataDetails
   let rows:JSX.Element[] = [];
   const editedRowsData = useRef<DataUpdate[]>(initArray(rowsData.length));
 
@@ -450,7 +448,7 @@ export function DashBoard() {
   return  (
     <section>
       <p><strong>Connected User:</strong>{}</p>
-      <p><strong>Connected Database:</strong>{}</p>
+      {/*<p><strong>Connected Database:</strong>{}</p>*/}
      <h2>Current connections</h2>
       <table>
         <thead>
@@ -743,7 +741,7 @@ export function TableRowsDisplay({ displayType } : {displayType: string}) {
   const [displayData, setDisplayData] = useState<{displayName: string, data: GenericQueryData}|null>(null); // add display type on errors
   const [rowEditMode, setRowEditMode] = useState(false);
   const allTableDetails = useRef<GenericQueryData|null>(null)
-  const tableDetails = useSelector(selectTargetTableDetails) 
+ const tableDetails = useSelector(selectCurrentTab).dataDetails
   const dispatch = useDispatch()
 
   useEffect(() => {
@@ -778,7 +776,7 @@ export function TableRowsDisplay({ displayType } : {displayType: string}) {
     if (results.errorMsg){
       alert(results.errorMsg)
     }else{
-      dispatch(pageChanged({newPage: "dashboard"}))
+      // dispatch(tabSwitched({newPage: "dashboard"}))
       alert(`Table '${tableName}' deleted successfully!`)
     }
   }
