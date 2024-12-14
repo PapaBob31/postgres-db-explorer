@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import { newServerConnected } from "../store"
+import { newServerConnected, tabCreated } from "../store"
 import { useDispatch } from "react-redux"
 
 
@@ -38,9 +38,27 @@ function serializeForm(elem: Element) {
 	let urlParamsObj = Object();
 	const inputElements = elem.querySelectorAll("input");
 	for (let element of inputElements) {
-		urlParamsObj[element.name] = element.value;
+		if (element.name === "ssl")
+			urlParamsObj[element.name] = element.checked;
+		else
+			urlParamsObj[element.name] = element.value;
 	}
 	return urlParamsObj
+}
+
+
+function genDashBoardStatePayload(obj: URLParams, connectionString: string) {
+	return  {
+	    tabName: "dashboard",
+	    tabType: "dashboard",
+	    serverConnString: connectionString,
+	    tabId: "",
+	    dataDetails: {
+	      dbName: obj.dbname,
+	      tableName: "",
+	      schemaName: "",
+	    }
+	}
 }
 
 export default function ConnectDbForm() {
@@ -55,7 +73,9 @@ export default function ConnectDbForm() {
 
 		if (response.ok) {
 			const connString = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:${urlParams.port}`
+			const newTabPayload = genDashBoardStatePayload(urlParams, connString)
 			dispatch(newServerConnected({name: "unimplemented yet", connString, connected: true, connectedDbs: [urlParams.dbname]}))
+			dispatch(tabCreated(newTabPayload))
 		}else {
 			alert("Invalid connection string")
 		}
@@ -64,7 +84,7 @@ export default function ConnectDbForm() {
 		<form id="server-connect-form" method="post" ref={formRef} onSubmit={connect}>
 			<label>Server Name</label>
 			<input type="text" name="serverName" required/>
-			<label>User</label>servername
+			<label>User</label>
 			<input type="text" name="user" required/>
 			<label>Password</label>
 			<input type="password" name="password" required/>
@@ -77,7 +97,7 @@ export default function ConnectDbForm() {
 			<label>SSl</label>
 			<input type="checkbox" name="ssl"/>
 			<label>Save connection details</label>
-			<input type="checkbox" checked name="saveConnDetails" />
+			<input type="checkbox" name="saveConnDetails" />
 			<button type="submit">Connect</button>
 		</form>
 	)
