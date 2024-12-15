@@ -1,5 +1,6 @@
 // import setupDbParams from "./utils/connect-db"
 const { Pool } = require("pg")
+const { saveNewServerDetail, getSavedServersDetails } = require("./savedServers")
 const express = require("express");
 // const cors = require("cors") // ?
 const cookieParser = require('cookie-parser');
@@ -60,13 +61,21 @@ function sessionIdIsValid(sessionId: string) {
 	return true
 }
 
+function generateConnectionStr(obj: any) {
+	if (obj.isConnUri) 
+		return obj.connectionDetails
+	const urlParams = obj.connectionDetails
+	let connectionString = `postgresql://${urlParams.user}:${urlParams.password}@${urlParams.hostname}:${urlParams.port}/${urlParams.dbname}`
+	return connectionString
+}
+
 function validateConnectionStr(req, res, next) { // change name later
-	if (req.originalUrl === "/connect-db") {
+	if (req.originalUrl === "/connect-db" || req.originalUrl === "/saved-servers") {
 		next()
 		return;
 	}
-	const pool = getPool(req.body.connectionString)
-	console.log(req.body.connectionString)
+	req.connectionString = generateConnectionStr(req.body)
+	const pool = getPool(req.connectionString)
 	if (!pool){
 		res.status(400).json({errorMsg: "Connect to the db first", data: null, msg: null});
 		return;
@@ -166,10 +175,17 @@ async function getDbDetails(pool) {
 }
 
 app.post("/connect-db", async (req, res) => {
-	const pool = await createPoolIfNotExists(req.body.connectionString, req.body.ssl) // readup more on this pooling stuff
+	const pool = await createPoolIfNotExists(req.connectionString, req.body.ssl) // readup more on this pooling stuff
 	if (!pool) {
 		res.status(400).json({msg: null, errorMsg: "Something went wrong while trying to connect to the db", data: null});
 		return;
+	}
+
+	if (req.body.saveConnDetails && !req.body.servername.trim()) {
+		res.status(400).json({msg: null, errorMsg: "Error! no 'servername' field", data: null})
+		return;
+	}else if (req.body.saveConnDetails) {
+		saveNewServerDetail(req.body)
 	}
 
 	res.cookie('sessionId', 'super-secure-unimplemented-id',
@@ -177,8 +193,13 @@ app.post("/connect-db", async (req, res) => {
 	res.status(200).json({msg: "connection successful", errorMsg: null, data: null})
 })
 
+app.get("/saved-servers", (_req, res) => {
+	const servers = getSavedServersDetails();
+	res.status(200).json(servers)
+})
+
 app.post("/update-table", async (req, res) => {
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const results = await processReq(req.body.query, pool)
 	let updates = null;
 
@@ -198,7 +219,7 @@ app.post("/update-table", async (req, res) => {
 })
 
 app.post("/alter-table", async (req, res) => {
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const results = await processReq(req.body.query, pool);
 	if (results.errorMsg) {
 		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
@@ -207,7 +228,7 @@ app.post("/alter-table", async (req, res) => {
 })
 
 app.post("/mutate-dbData", async (req, res) => {
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const results = await processReq(req.body.query, pool);
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
@@ -220,7 +241,7 @@ app.post("/mutate-dbData", async (req, res) => {
 })
 
 app.post("/query-table", async (req, res) => { // Add robust processing for relations that doesn't exist
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const results = await processReq(req.body.query, pool)
 	if (results.errorMsg) {
 		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
@@ -232,7 +253,7 @@ app.post("/query-table", async (req, res) => { // Add robust processing for rela
 
 app.post("/drop-table", async (req, res) => {
 	const cascadeString = req.body.cascade ? "CASCADE" : "RESTRICT";
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const results = await processReq(`DROP TABLE ${req.body.tableName} ${cascadeString};`, pool)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg})
@@ -242,7 +263,7 @@ app.post("/drop-table", async (req, res) => {
 })
 
 app.post("/delete-row", async (req, res) => {
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const {targetTable, rowId} = req.body
 	const results = await processReq(`DELETE FROM ${targetTable} WHERE ctid = '${rowId}';`, pool)
 	if (!results.errorMsg) {
@@ -253,7 +274,7 @@ app.post("/delete-row", async (req, res) => {
 })
 
 app.post('/get-db-details', async (req, res) => {
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const processedData = await getDbDetails(pool)
 	if (processedData.errorMsg) {
 		res.status(400).json({errorMsg: processedData.errorMsg, data: null, msg: null})
@@ -261,7 +282,7 @@ app.post('/get-db-details', async (req, res) => {
 })
 
 app.post("/", async (req, res) => {
-	const pool = getPool(req.body.connectionString)
+	const pool = getPool(req.connectionString)
 	const results = await processReq("SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;", pool)
 	console.log(results)
 	if (results.errorMsg) {
@@ -276,25 +297,5 @@ app.post("/", async (req, res) => {
 	
 })
 
-/*app.post("/verify-connect-str", async (req, res) => { // TO BE REMOVED
-	let connectionStr = `${req.body.serverSpecs}/${req.body.targetDb}`
-	const pool = setupDbParams(connectionStr);
-	let client, statusCode:number;
-	try {
-		client = await pool.connect();
-		statusCode = 200;
-	}catch(error) {
-		// add better error message i.e server doesn't support ssl, invalid connection strings
-		console.log(error)
-		statusCode = 400;
-	}finally {
-		client.release();
-	}
-	if (statusCode === 200) { // make it an encrypted session cookie?
-		res.cookie('serverSpecs', req.body.serverSpecs,
-		{httpOnly: true, secure: true, maxAge: 6.04e8}) // 7 days
-	}
-	res.status(statusCode).send()
-})*/
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)
