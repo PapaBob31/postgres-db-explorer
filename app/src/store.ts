@@ -1,13 +1,17 @@
-import { configureStore, createSlice } from "@reduxjs/toolkit"
+import { configureStore, createSlice, createAsyncThunk } from "@reduxjs/toolkit"
 
 export interface ServerDetails {
 	name: string;
 	connString: string;
 	connected: boolean;
-	connectedDbs: string[]
+	connectedDbs: string[];
 }
 
-const serversDetails:ServerDetails[] = []
+
+const serversDetails: {fetchedSavedServers: boolean; data: ServerDetails[]} = {
+	fetchedSavedServers: false,
+	data: []
+}
 
 export interface OpenedTabDetail {
 	tabName: string;
@@ -91,17 +95,68 @@ const tabsSlice = createSlice({
 	}
 })
 
+interface ConnectionParams {
+  user: string;
+  password: string;
+  hostname: string;
+  dbname: string;
+  port: number;
+  ssl: boolean
+}
+
+interface BackendServerDetails {
+  servername: string;
+  recordType: "uri-parts"|"uri";
+  connectionDetails: ConnectionParams | null;
+  connectionUri: string
+}
+
+
+export const fetchSavedServers = createAsyncThunk("servers/loadSavedServers", async () => {
+	const response = await fetch("http://localhost:4900/saved-servers");
+	let data;
+	if (response.ok)
+		data = await response.json() as BackendServerDetails[]
+
+	if (!data)
+		return []
+
+	return data.map((data) => {
+        return {
+          name:  data.servername,
+          connString: data.connectionUri,
+          connected: false,
+          connectedDbs: [] as string[]
+     	}
+  	})
+})
+
 const serverSlice =  createSlice({
 	name: "servers",
 	initialState: serversDetails,
 	reducers: {
 		newServerConnected(state, action: {type: string, payload: ServerDetails}) {
+
 			// sort it first putting connected on top
-			state.push(action.payload)
+			const tempArray:ServerDetails[] = state.data.splice(0, state.data.length);
+			tempArray.forEach(data => data.connected && state.data.push(data))
+			state.data.push(action.payload);
+
+			tempArray.forEach(data => !data.connected && state.data.push(data))
 		},
 		newDbConnected(state, action) {
 
 		}
+	},
+	extraReducers(builder) {
+		builder.addCase(fetchSavedServers.fulfilled, (state, action: {type: string, payload: ServerDetails[]}) => {
+			state.fetchedSavedServers = true
+			state.data.push(...action.payload)
+		})
+
+		.addCase(fetchSavedServers.rejected, (state, action) => {
+			state.data = [];
+		})
 	}
 })
 
@@ -118,5 +173,6 @@ export const { newServerConnected } = serverSlice.actions;
 
 export const selectTabs = (state: ReturnType<typeof store.getState>) => state.tabs
 export const selectCurrentTab = (state: ReturnType<typeof store.getState>) => state.tabs.currentTab
-export const selectServers = (state: ReturnType<typeof store.getState>) => state.servers
+export const selectServers = (state: ReturnType<typeof store.getState>) => state.servers.data
+export const selectServersFetchStatus = (state: ReturnType<typeof store.getState>) => state.servers.fetchedSavedServers
 
