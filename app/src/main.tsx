@@ -1,7 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from 'react-dom/client'
-import { Provider, useSelector } from "react-redux"
-import store, { selectServers } from "./store"
+import { Provider, useSelector, useDispatch } from "react-redux"
+import store, { selectServers, selectServersFetchStatus, fetchSavedServers } from "./store"
 import ServerRep from "./sideNavBar"
 
 import ConnectDbForm from "./routes/dbConnect"
@@ -23,12 +23,20 @@ function Servers() {
 
 
 function Main(){
-  const servers = useSelector(selectServers);
+  const dispatch = useDispatch()
+  const loaded = useSelector(selectServersFetchStatus)
+  const servers = useSelector(selectServers)
+
+  if (!loaded)  {
+    dispatch(fetchSavedServers())
+  }
 
   return (
     <>
-      <Servers/>
-      {servers.some(server => server.connected) ? <DbDataDisplay /> : <ConnectDbForm />}
+      {loaded ? <>
+        <Servers/>
+        {servers.some(server => server.connected) ? <DbDataDisplay /> : <ConnectDbForm />}
+      </> : <div id-="loader"><div id="spinner"></div></div>}
     </>
   )
 }
