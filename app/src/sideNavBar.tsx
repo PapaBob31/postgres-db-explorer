@@ -1,8 +1,20 @@
 import { useEffect, useRef, useState, createContext, useContext } from "react"
-import { useDispatch } from "react-redux"
-import { type ServerDetails, tabCreated } from "./store"
+import { useDispatch, useSelector } from "react-redux"
+import { type ServerDetails, tabCreated, selectCurrentTabServerConfig, getServerObjects } from "./store"
+import { generateUniqueId } from "./main"
 
-export const ServerDetailsContext = createContext({connString: "", connected: false, connectedDbs: [] as string[]})
+export const ServerDetailsContext = createContext<ServerDetails>({
+  name: "",
+  config: null,
+  isConnUri: false,
+  connectionUri: "",
+  initDb: "",
+  fetchedObjs: false,
+  connectedDbs: [] as string[],
+  roles: [],
+  databases: []
+})
+
 const ParentDb = createContext("")
 
 interface TableBtnProps {
@@ -14,16 +26,16 @@ interface TableBtnProps {
 
 
 function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnProps) {
-  const serverDetails = useContext(ServerDetailsContext)
   const parentDb = useContext(ParentDb)
   const dispatch = useDispatch()
-  const dataDetails = {tableName, schemaName, dbName: parentDb}
+  const connectedServerDetails =  useContext(ServerDetailsContext)
+  const dataDetails = {tableName, schemaName, dbName: parentDb, serverConfig: connectedServerDetails.config}
 
   return (
     <li key={tableName} className="db-table-rep">
       <button className="db-table-btn" onClick={()=>{
         dispatch(
-          tabCreated({tabType: "table-info", tabName: tableName, serverConnString: serverDetails.connString+`/${parentDb}`, dataDetails})
+          tabCreated({tabType: "table-info", tabName: tableName, dataDetails})
         )}
       }>
         {tableName}
@@ -36,7 +48,7 @@ function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnP
       {visibleMenu === tableName && (
         <div className="db-table-menu">
           <button onClick={()=>dispatch(
-            tabCreated({tabType: "insert-form", tabName: tableName, serverConnString: serverDetails.connString+`/${parentDb}`, dataDetails})
+            tabCreated({tabType: "insert-form", tabName: tableName, dataDetails})
           )}>Insert</button>
           <button>Delete</button>
         </div>
@@ -90,7 +102,7 @@ function DataBase({dbName}: {dbName: string}) {
   const schemas = useRef<{name: string; tables: string[];}[]>([]);
   const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
   const connectedServerDetails = useContext(ServerDetailsContext)
-  const connectionString = connectedServerDetails.connString + '/' + dbName
+  const config = useSelector(selectCurrentTabServerConfig)
 
   useEffect(() => {
     if (connectedServerDetails.connectedDbs.includes(dbName)){
@@ -103,7 +115,7 @@ function DataBase({dbName}: {dbName: string}) {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({connectionString})
+      body: JSON.stringify({config})
     })
     .then(response => response.json())
     .then(responseBody => {
@@ -176,59 +188,53 @@ export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
   )
 }
 
-
-export default function ServerRep({ serverDetails } : {serverDetails: ServerDetails}) {
-  const [data, setData] = useState<{roles: string[], dataBases: string[]}>({roles: [], dataBases: []});
-  const dispatch = useDispatch()
-  const connectionString = serverDetails.connString + '/' + serverDetails.connectedDbs[0]
-
-  const dashboardUpdate = {
+function getNewDashboardTabObj(serverConfig: any, targetDb: string) {
+  return {
     tabName: "dashboard",
     tabType: "dashboard",
-    serverConnString: connectionString,
-    tabId: "",
     dataDetails: {
-      dbName: serverDetails.connectedDbs[0],
+      dbName: targetDb,
       tableName: "",
       schemaName: "",
+      serverConfig
+    }
+  }
+}
+
+
+export default function ServerRep({ serverDetails } : {serverDetails: ServerDetails}) {
+  const dispatch = useDispatch()
+
+  function connectToDb() {
+    if (!serverDetails.fetchedObjs){
+      dispatch(tabCreated(getNewDashboardTabObj(serverDetails.config, serverDetails.initDb)))
+      dispatch(getServerObjects({serverName: serverDetails.name, config: {...serverDetails.config, database: serverDetails.initDb}}))
     }
   }
 
-
-
-  useEffect(() => {
-    fetch("http://localhost:4900", {
-      credentials: "include",
-      headers: {"Content-Type": "application/json"},
-      method: "POST",
-      body: JSON.stringify({connectionString}) 
-    })
-    .then(response => {
-      switch (response.status) {
-        case 200:
-          return response.json()
-        default:
-          dispatch(tabCreated(dashboardUpdate));// change this later
-      }
-      response.json()
-    })
-    .then(responseBody => {
-      setData(responseBody.data)
-    })
-    .catch(() => alert("Internet connection Error: Check your internet connection and if the database is reachable"))
-  }, [])
+  function openNewConsole() {
+    dispatch(tabCreated({
+    tabName: "SQL-Console",
+    tabType: "SQL-Console",
+    dataDetails: {
+      dbName: serverDetails.initDb,
+      tableName: "",
+      schemaName: "",
+      serverConfig: serverDetails.config
+    }
+  }))
+  }
   
   return (
-    <ServerDetailsContext.Provider value={serverDetails}>
-      <li id="cluster-lvl-objs">
-        {data && (
-          <>
-            <button>New SQL console</button>
-            <Roles dbClusterRoles={data.roles} />
-            <DataBases clusterDbs={data.dataBases} />
-          </>
-        )}
-      </li>
-    </ServerDetailsContext.Provider>
+    <li id="cluster-lvl-objs">
+      <button onClick={connectToDb}>{serverDetails.name}</button>
+      {serverDetails.fetchedObjs && (
+        <ServerDetailsContext.Provider value={serverDetails}>
+          <button onClick={openNewConsole} type="button">SQL console</button>
+          <Roles dbClusterRoles={serverDetails.roles} />
+          <DataBases clusterDbs={serverDetails.databases} />
+        </ServerDetailsContext.Provider>
+      )}
+    </li>
   )
 }

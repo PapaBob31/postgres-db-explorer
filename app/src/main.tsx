@@ -1,4 +1,4 @@
-import { StrictMode } from "react"
+import { StrictMode, useEffect } from "react"
 import { createRoot } from 'react-dom/client'
 import { Provider, useSelector, useDispatch } from "react-redux"
 import store, { selectServers, selectServersFetchStatus, fetchSavedServers } from "./store"
@@ -7,7 +7,15 @@ import ServerRep from "./sideNavBar"
 import ConnectDbForm from "./routes/dbConnect"
 import DbDataDisplay from "./routes/dbDataDisplay"
 
-
+export function generateUniqueId() {
+  let key = "";
+  const alphaNumeric = "0abcdefghijklmnopqrstuvwxyz123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  for (let i=0; i<5; i++) {
+    const randIndex = Math.floor(Math.random()  * alphaNumeric.length);
+    key += alphaNumeric[randIndex];
+  }
+  return key
+}
 
 function Servers() {
   const servers = useSelector(selectServers);
@@ -15,7 +23,7 @@ function Servers() {
     <section>
       <h1>Saved Servers</h1>
       <ul>
-        {servers.map(server => <ServerRep serverDetails={server}/>)}
+        {servers.map(server => <ServerRep key={server.name} serverDetails={server}/>)}
       </ul>
     </section>
   )
@@ -27,15 +35,17 @@ function Main(){
   const loaded = useSelector(selectServersFetchStatus)
   const servers = useSelector(selectServers)
 
-  if (!loaded)  {
-    dispatch(fetchSavedServers())
-  }
+  useEffect(() => {
+    if (!loaded) {
+      dispatch(fetchSavedServers())
+    }
+  }, [loaded])
 
   return (
     <>
       {loaded ? <>
         <Servers/>
-        {servers.some(server => server.connected) ? <DbDataDisplay /> : <ConnectDbForm />}
+        {servers.some(server => server.fetchedObjs) ? <DbDataDisplay /> : <ConnectDbForm />}
       </> : <div id-="loader"><div id="spinner"></div></div>}
     </>
   )
