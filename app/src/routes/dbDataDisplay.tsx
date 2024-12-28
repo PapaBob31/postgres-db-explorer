@@ -3,7 +3,7 @@ import { TableRowsDisplay, NewTypeForm, DashBoard } from "./dbData"
 import { CreateTable } from "./newTableForm";
 import { useSelector, useDispatch } from "react-redux"
 // import { ServerDetailsContext, generateUniqueId } from "../main"
-import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched } from "../store"
+import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched, selectCurrentTabServerConfig } from "../store"
 
 
 export function getData(query: string, config: any) {
@@ -18,12 +18,44 @@ export function getData(query: string, config: any) {
 }
 
 
-function SQLConsole() {
+function QueryResultTable({data} : {data: {fields: string[], rows: any[]}}) {
+  const tableHeaderJSX = data.fields.map(field => <th>{field}</th>)
+  const tableBodyJSX = [];
+
+  for (let row of data.rows) {
+    let rowJsx = []
+    for (let field of data.fields) {
+      rowJsx.push(<td>{row[field]}</td>)
+    }
+    tableBodyJSX.push(<tr>{rowJsx}</tr>)
+  }
   return (
+    <table>
+      <thead><tr>{tableHeaderJSX}</tr></thead>
+      <tbody>{tableBodyJSX}</tbody>
+    </table>
+  )
+}
+
+
+function SQLConsole() {
+  const textAreaRef = useRef<HTMLTextAreaElement>(null)
+  const config = useSelector(selectCurrentTabServerConfig)
+  const [lastQueryData, setLastQueryData] = useState(null)
+
+  async function runQuery() {
+    const queryResult = await getData(textAreaRef.current!.value, config)
+    setLastQueryData(queryResult.data) 
+  }
+  return (<>
+    <button onClick={runQuery}>Run</button>
     <section id="sql-console">
-      <textarea id="sql-console-input"></textarea>
-      <section id="sql-console-output"></section>
-    </section>)
+      <textarea ref={textAreaRef} id="sql-console-input"></textarea>
+      <section id="sql-console-output">
+        {lastQueryData && <QueryResultTable data={lastQueryData}/>}
+      </section>
+    </section>
+  </>)
 }
 
 function getInputDetails(container: HTMLDivElement) {
