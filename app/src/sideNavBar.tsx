@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, createContext, useContext } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { type ServerDetails, tabCreated, selectCurrentTabServerConfig, getServerObjects } from "./store"
-import { generateUniqueId } from "./main"
 
 export const ServerDetailsContext = createContext<ServerDetails>({
   name: "",
@@ -214,15 +213,15 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
 
   function openNewConsole() {
     dispatch(tabCreated({
-    tabName: "SQL-Console",
-    tabType: "SQL-Console",
-    dataDetails: {
-      dbName: serverDetails.initDb,
-      tableName: "",
-      schemaName: "",
-      serverConfig: serverDetails.config
-    }
-  }))
+      tabName: "SQL-Console",
+      tabType: "SQL-Console",
+      dataDetails: {
+        dbName: serverDetails.initDb,
+        tableName: "",
+        schemaName: "",
+        serverConfig: serverDetails.config
+      }
+    }))
   }
   
   return (
