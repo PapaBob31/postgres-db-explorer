@@ -89,6 +89,11 @@ const tabsSlice = createSlice({
 		tabSwitched(state, action: {type: string, payload: string}) {
 			const targetTab = state.openedTabs.find((tab) => tab.tabId === action.payload) as OpenedTabDetail;
     		state.currentTab = targetTab
+		},
+		tabChangedInPlace(state, action: Action) {
+			let replacedTabIndex = state.openedTabs.findIndex((tab) => tab.tabId === state.currentTab!.tabId);
+			state.openedTabs[replacedTabIndex] = {tabId: state.currentTab!.tabId, ...action.payload} // currentTab is also the tab to be replaced
+			state.currentTab = state.openedTabs[replacedTabIndex]
 		}
 	}
 })
@@ -188,7 +193,7 @@ const store = configureStore({
 })
 
 export default store;
-export const { tabCreated, tabClosed, tabSwitched } = tabsSlice.actions
+export const { tabCreated, tabClosed, tabSwitched, tabChangedInPlace } = tabsSlice.actions
 export const { addNewServer } = serverSlice.actions;
 
 export const selectTabs = (state: ReturnType<typeof store.getState>) => state.tabs
