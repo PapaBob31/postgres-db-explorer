@@ -1,6 +1,29 @@
-import { useState, useRef, useContext } from "react"
-import { ServerDetailsContext } from "../sideNavBar"
+import { useState } from "react"
+import { useDispatch, useSelector } from "react-redux"
+import { tabChangedInPlace, selectCurrentTab } from "../store"
+import { useForm, useFieldArray, SubmitHandler, type UseFormRegister } from "react-hook-form"
 
+interface ColumnSpec {
+  name: string;
+  dataType: string;
+  typeAttributes: string; // for storing extra attributes of types i.e whould store the n in char(n)
+  collation?: string;
+  storage?: string;
+  compression?: string; // only if storage was specified
+  constraints: string;
+}
+
+interface FormValues {
+  name: string;
+  temporary?: boolean;
+  onCommit?: string;
+  unlogged?: boolean;
+  columns?: ColumnSpec[];
+  likeTable?: string;
+  likeOption?: string[];
+  tableConstraints?: string;
+  tableSpace?: string;
+}
 
 // escapes special sql chracters in identifiers
 function escapeSQLCharacters(text: string): string {
@@ -11,21 +34,59 @@ function escapeSQLCharacters(text: string): string {
   return escapedText;
 }
 
-function getDefaultValue(text: string, columnType: string) {
-  if (["character", "character varying", "text"].includes(columnType)) {
-    return "$$" + text + "$$"
+
+function getColumnSpecSql(columnsData: ColumnSpec[], tableConstraints: string) {
+  // fv : formatValue
+  function fv(value: any) {
+    if (value)
+      return value + ' '
+    else 
+      return ''
   }
-  return text
+  if (columnsData.length == 0) 
+    return "";
+  let sql = "("
+  for (let data of columnsData) {
+    if (sql !== '(') // at least one column specification has been added
+      sql += ','
+
+    sql += `\n  ${fv(escapeSQLCharacters(data.name))}${fv(data.dataType)}`
+    if (data.typeAttributes) {
+      sql += `(${data.typeAttributes}) `
+    }
+    sql += `${fv(data.storage)}${fv(data.compression)}${fv(data.collation)}${data.constraints}`
+  }
+  if (tableConstraints) {
+    sql += ',\n  '+tableConstraints // should there always be columns before table constraint; enforce it in the UI if so
+  }
+  sql += '\n)'
+  return sql;
 }
+
+function generateQuery(tableData: FormValues) {
+  console.log(tableData)
+  let query = "CREATE"
+  if (tableData.temporary) {
+    query += " TEMPORARY"
+  }else if (tableData.unlogged) {
+    query += " UNLOGGED"
+  }
+  query += " TABLE IF NOT EXISTS "
+  query += escapeSQLCharacters(tableData.name)
+  query += getColumnSpecSql(tableData.columns as ColumnSpec[], tableData.tableConstraints as string) + ';'
+
+  return [tableData.name, query]
+}
+
 
 function DataTypeOptions(){
   let postgreSqlTypes = [
-    "bigint", "bit", "bit varying", "boolean", "char", "character varying", "character",
-    "varchar", "date", "double precision", "integer", "numeric", "decimal", "domain types",
-    "real", "smallint", "timestamp", "smallserial", "serial", "bigserial", "line segments",
-    "text", "bytea", "time", "interval", "timestamptz", "enum", "points", "lines", "boxes",
-    "paths", "polygons", "circles", "inet", "cidr", "macaddr", "macaddr8", "tsquery", "oids", "money",
-    "uuid", "xml", "json", "jsonb", "Array",  "tsvector", "composite types", "ranges", "pg_lsn", "pseudo types"
+    "bigint", "bit", "bit varying", "bigserial", "boolean", "bpchar", "char", "varchar","date", 
+    "double precision", "integer", "numeric", "decimal", "domain types", "enum", "line segments",
+    "real", "smallint", "smallserial", "serial", "timestamp", "text", "bytea", "time", "interval", 
+    "timestamptz", "points", "lines", "boxes", "paths", "polygons", "circles", "inet", "cidr", 
+    "macaddr", "macaddr8", "tsquery", "oids", "money", "uuid", "xml", "json", "jsonb", "Array", 
+    "tsvector", "composite types", "ranges", "pg_lsn", "pseudo types"
   ]
   let htmlOptionElems = postgreSqlTypes.map((option) => <option key={option}>{option}</option>)
   return (
@@ -35,286 +96,117 @@ function DataTypeOptions(){
   )
 }
 
-function getColumnDetails(container: HTMLDivElement) { // escape user input
-  const formEntries:any = Object();
-  const targetValues = ["column-name", "data-type", "constraints", "char-length"]
-  // should be documented that you have auto escaped identifiers and strings
+function TypeAttributes({type, updateTypeAttributes} : {type: string, updateTypeAttributes: (str: string) => void}){
+  const [attributes, setAttributes] = useState<string[]>(["", ""])
 
-  for (let i=0; i<container.children.length; i++) {
-    let formControl = container.children.item(i) as HTMLInputElement;
-    if (formControl.name === "column-name") {
-      formControl.value = escapeSQLCharacters(formControl.value)
-    }
-    if (formControl.name === "default-value" && formControl.value.trim()) {
-      formEntries[formControl.name] = ` DEFAULT ${getDefaultValue(formControl.value, formControl.name)}`
-    }else if (formControl.name && targetValues.includes(formControl.name)) {
-      if (formControl.value) { // trim it first?
-        formEntries[formControl.name] = ' ' + formControl.value;
-      }else formEntries[formControl.name] = "";
-    }
-  }
-
-  if (formEntries["data-type"] === " character" || formEntries["data-type"] === " character varying") {
-    let charLength = formEntries["char-length"].trim()
-    formEntries["data-type"] += (charLength ? `(${charLength})` : "")
-  }
-
-  if (formEntries['default-value'])
-    return `${formEntries['column-name']}${formEntries['data-type']}${formEntries['default-value']}${formEntries['constraints']}`;
-
-  return `${formEntries['column-name']}${formEntries['data-type']}${formEntries['constraints']}`;
-}
-
-function generateQuery(formElement: HTMLFormElement) {
-    let tableName = "";
-    let columnDetails = "";
-
-    for (let childNode of formElement.children) {
-      if (childNode.nodeName === "INPUT" && (childNode as HTMLInputElement).name === "table-name") {
-        tableName = (childNode as HTMLInputElement).value;
+  function setAttributesValue(value: string, type: "strLen"|"precision"|"scale") {
+    const newArr = [...attributes]
+    switch(type) {
+      case "strLen":{
+        newArr[0] = value
+        setAttributes(newArr)
+        break;
       }
-      if (childNode.nodeName === "DIV") {
-        if (columnDetails)
-          columnDetails += ', ';
-        columnDetails += getColumnDetails(childNode as HTMLDivElement)
+      case "precision": {
+        newArr[0] = value
+        setAttributes(newArr)
+        break;
+      }
+      case "scale": {
+        newArr[1] = value
+        setAttributes(newArr)
+        break;
       }
     }
-
-    return [tableName, `CREATE TABLE IF NOT EXISTS ${escapeSQLCharacters(tableName)} (${columnDetails});`]
-}
-
-function numericParams() {
-  return (
-    <></>
-  )
-}
-
-/*columns
-  [name type default value] [constraints+]+
-  [generated column]
-table constraints
-
-default values can be expressions that returns a value rather than being just a value
-check constraints that evaluate to null are taken to be true*/
-
-
-type defaultValTypes = "DEFAULT VALUE"|"GEN ALWAYS AS IDENT"|"GEN BY DEFAULT AS IDENT"|"GEN ALWAYS AS EXPR"
-
-function DefaultValueDropDown({dataType} : {dataType: string}) {
-  const [defaultValType, setDefaultValType] = useState<defaultValTypes>("DEFAULT VALUE")
-  const [optionsVisible, setOptionsVisibility] = useState(true);
-  const seqDataTypes = ["bigint", "smallint", "integer"]
-  const idenBtnDisabled = !seqDataTypes.includes(dataType)
-
-  const verboseText: {[key: string]: string} = {
-    "DEFAULT VALUE": "DEFAULT VALUE",
-    "GEN ALWAYS AS IDENT": "GENERATED ALWAYS AS IDENTITY",
-    "GEN BY DEFAULT AS IDENT": "GENERATED BY DEFAULT AS IDENTITY",
-    "GEN ALWAYS AS EXPR": "GENERATED ALWAYS AS EXPRESSION"
   }
 
-  function updateDisplay(defValType: defaultValTypes) {
-    setDefaultValType(defValType)
-    setOptionsVisibility(!optionsVisible)
-  }
-
-  return (
-    <div id="default-types-container">
-      <div id="default-types-dropdown" className={optionsVisible ? "" : "hidden"}>
-        <button onClick={() => setOptionsVisibility(!optionsVisible)}>{verboseText[defaultValType]}&darr;</button>
-        <ul>
-          <li><button onClick={() => updateDisplay("DEFAULT VALUE")}>DEFAULT VALUE</button></li>
-          {/* Check the docs for what they mean by sequence options */}
-          <li>
-            <button onClick={() => updateDisplay("GEN ALWAYS AS IDENT")} disabled={idenBtnDisabled}>
-              GENERATED ALWAYS AS IDENTITY
-            </button>
-          </li> 
-          <li>
-            <button onClick={() => updateDisplay("GEN BY DEFAULT AS IDENT")} disabled={idenBtnDisabled}>
-              GENERATED BY DEFAULT AS IDENTITY
-            </button>
-          </li>
-          <li><button onClick={() => updateDisplay("GEN ALWAYS AS EXPR")}>GENERATED ALWAYS AS expression</button></li>
-        </ul>
-      </div>
-      {defaultValType === "DEFAULT VALUE" && (
-        <>
-          <label htmlFor="default-value">Default value:</label>
-          <input type="text" name="default-value" id="default-value" />
-        </>
-      )}
-      {defaultValType === "GEN ALWAYS AS EXPR" && (
-        <>
-          <label htmlFor="default-value">GENERATED ALWAYS AS expression</label>
-          <input type="text" name="default-value" id="default-value" />
-        </>
-      )}
-    </div>
-  )
-}
-
-
-interface ConstraintInfo {
-  id: string;
-  name: string;
-  type: string;
-  expression: string; // if any
-}
-
-function generateId() {
-  const alphanumeric = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789'
-  let id = ''
-  for (let i=0; i<5; i++) {
-    let randomIndex = Math.floor(Math.random() * alphanumeric.length)
-    id += alphanumeric[randomIndex]  
-  }
-  return id
-}
-
-function ColumnConstraints() {
-  // TODO: READ UP ON THE NOT VALID constraint
-  const [constraints, setConstraints] = useState<ConstraintInfo[]>([]);
-  const [errorMsg, setErrorMsg] = useState("")
-
-  /*
-    A column can't have more than one primary key, foreign key,
-    A table can't have more than one primary key
-  */
-  function addConstraint() {
-    setConstraints([...constraints, {id: generateId(), name: "", type: "unspecified", expression: ""}])
-  }
-
-  function validateAndUpdate(constraintType: string, targetDataIndex: number) {
-    for (const info of constraints) {
-      if (info.type !== constraintType) {
-        continue
-      }else if (constraintType === "PRIMARY KEY") {
-        setErrorMsg("Table already has a primary key!")
-        return
-      }else if (constraintType === "FOREIGN KEY") {
-        setErrorMsg("Column is already a foreign key!")
-        return
-      }else if (info.type.startsWith("UNIQUE") && constraintType.startsWith("UNIQUE")) {
-        setErrorMsg("Column already has a unique constraint. Change that one or remove it")
-      }
-    }
-    if (constraints[targetDataIndex].type !== constraintType)
-      return;
-    setConstraints(constraints.map((constraint, index) => {
-      if (index === targetDataIndex) {
-         return {...constraint, type: constraintType}; 
-      }
-      return constraint;
-    }))
-  }
-
-
-  return (
-    <section>
-      {errorMsg && <p className="error">{errorMsg} <button onClick={() => setErrorMsg("")}>x</button></p>}
-      {constraints.map((constraint, index) => {
-        return (<div key={constraint.id}>
-          <label>Constraint name</label>
-          <input type="text" name="constraint-name" placeholder="constraint-name"/>
-          <label>Constraint type</label>
-          <select onChange={(event) => {validateAndUpdate(event.target.value.trim(), index)}}>
-            <option>CHECK</option>
-            <option>PRIMARY KEY</option>
-            <option>UNIQUE NULLS DISTINCT</option>
-            <option>UNIQUE NULLS NOT DISTINCT</option>
-            <option>NOT NULL</option>
-            <option>FOREIGN KEY</option>
-            <option>EXCLUDE</option>
-          </select>
-          {constraint.type === "unspecified" && <span>Constraint hasn't been specified</span>}
-          {constraint.type === "CHECK" && <input type="text" placeholder="check expression"/>}
-          {constraint.type === "PRIMARY KEY" && <span>PRIMARY KEY</span>}
-          {constraint.type.startsWith("UNIQUE") && <span>{constraint.type}</span>}
-          {constraint.type === "FOREIGN KEY" && (<>
-            <label>Referencing Column</label>
-            <select><option>no data yet</option></select>
-            <label>Referened Table</label>
-            <select><option>no data yet</option></select>
-            <label>Referenced Column</label>
-            <select><option>no data yet</option></select>
-            <label>ON DELETE</label>
-            <input type="text" />
-            <select>
-              <option>NO ACTION</option>
-              <option>RESTRICT</option>
-              <option>CASCADE</option>
-              <option>SET NULL</option> {/* It has optional parameters*/}
-              <option>SET DEFAULT</option> {/* It has optional parameters*/}
-            </select>
-          </>)}
-          {constraint.type === "EXCLUDE" && (<button disabled>Implement Later</button>)}
-        </div>)
-      })}
-      <button onClick={addConstraint}>Add constraint</button>
-    </section>
-  )
-}
-
-function TableConstraints() {
-  return (
-    <section>
-      <h2>Table Constraints</h2>
-      <p>Unimplemented</p>
-    </section>
-  )
-}
-
-function ColumnDetailsForm({renderKey, removeColumn} : {renderKey: number, removeColumn: (key: number)=>void}) {
-  const [dataType, setDataType] = useState("")
-
-  const extraInputComponents = { 
-    "character varying": <input max={10485760} type="number" name="char-length" placeholder="n"/>,
-    "character": <input max={10485760} type="number" name="char-length" placeholder="n"/>,
+  const attributesMap: {[key: string]: JSX.Element} = {
+    "varchar": <input 
+                  max={10485760} type="number" onChange={(event)=>setAttributesValue(event.target.value, "strLen")}
+                  name="char-length" value={attributes[0]} placeholder="n"
+                />,
+    "char": <input 
+                max={10485760} type="number" onChange={(event)=>setAttributesValue(event.target.value, "strLen")}
+                name="char-length" value={attributes[0]} placeholder="n"
+              />,
     // warn users about negative scale not being portable and check if these are the proper max and min scales
-    "numeric": <><input max={1000} min={-1000} type="number" name="precision"/><input max={1000} min={-1000} type="number" name="scale"/></>,
+    "numeric": <>
+          <input max={1000} min={-1000} type="number" name="precision" onChange={(event)=>setAttributesValue(event.target.value, "precision")}/>
+          <input max={1000} min={-1000} type="number" name="scale" onChange={(event)=>setAttributesValue(event.target.value, "scale")}/>
+        </>
     // Get all the enum types first
   }
 
-  return (
-    <div>
-    <label htmlFor="column-name"><b>Column name</b></label>
-    <input type="text" name="column-name" id="column-name" required />
-    <label htmlFor="data-type"><b>Data type</b></label>
-    <select required id="data-type" name="data-type" value={dataType} onChange={(event) => setDataType(event.target.value)}>
-      <DataTypeOptions/>
-    </select>
-    {extraInputComponents[dataType] || null}
-    <DefaultValueDropDown dataType={dataType}/>
-    <ColumnConstraints/>
-    <TableConstraints/>
-    <button>Add Constraints</button>
+  const formatedAttributes = attributes.filter(attribute => Boolean(attribute)).join()
 
-    <label htmlFor="constraints"><b>Constraints</b></label>
-    
-    <input type="text" name="constraints" id="constraints" />
-    <label>No Inherit</label>
-    <input type="checkbox"/>
-    <button type="button" onClick={() => removeColumn(renderKey)}>remove</button>
+  return (<>
+      {attributesMap[type] && (
+      <div className="inline" onBlur={() => updateTypeAttributes(formatedAttributes)}>{attributesMap[type]}</div>)}
+    </>)
+}
+
+function ColumnDetailsForm({index, removeColumn, register, setValue} : {index: number, removeColumn: (index: number)=>void, register: UseFormRegister<FormValues>, setValue: any}) {
+  const [dataType, setDataType] = useState("")
+  // const [typeAttributes, setTypeAttributes] = useState("")
+  const specialDataTypes = ["varchar", "char", "numeric"]
+
+  function setTypeAttributes(newValue: string) {
+    setValue(`columns.${index}.typeAttributes`, newValue)
+  }
+
+  return (
+    <div className="column-details">
+      <label htmlFor="column-name" className="block"><b>Column name</b></label>
+      <input type="text" {...register(`columns.${index}.name`, {required: true})} />
+      <label htmlFor="data-type" className="block"><b>Data type</b></label>
+      <select {...register(`columns.${index}.dataType`, {required: true})} value={dataType} onChange={(event) => setDataType(event.target.value)}>
+        <DataTypeOptions/>
+      </select>
+      <input type="hidden" {...register(`columns.${index}.typeAttributes`)} />
+      {specialDataTypes.includes(dataType) && <TypeAttributes key={dataType} type={dataType} updateTypeAttributes={setTypeAttributes} />}
+      <label className="block">Collation</label>
+      <input type="text" {...register(`columns.${index}.collation`)}/>
+      <label className="block">Storage</label>
+      <select {...register(`columns.${index}.storage`)}>
+         <option>PLAIN</option>
+         <option>EXTERNAL</option>
+         <option>EXTENDED</option>
+         <option>MAIN</option>
+         <option>DEFAULT</option>
+      </select>
+      <label className="block">Constraints</label>
+      <input type="text" {...register(`columns.${index}.constraints`)} />
+      <button type="button" onClick={() => removeColumn(index)}>remove</button>
     </div>
   )
 }
 
+// perhaps you can just highlight when the user has used
+// a key word wrongly
 
-function GeneralTableAttributes({visibility} : {visibility: "visible"|"hidden"|"collapse"}) {
+function GeneralTableAttributes({display, register} : {display: "show"|"hide", register: UseFormRegister<FormValues>}) {
   const [tempOptionsVisible, setTempOptionsVisible] = useState(false)
+  const [copiedTable, setCopiedTable] = useState("")
+  const [includeOptionsVisible, setIncludeOptionsVisible] = useState(false)
+
+  function setLikeOption(event: React.ChangeEvent<HTMLInputElement>) {
+    setCopiedTable(event.target.value)
+    if (!event.target.value && includeOptionsVisible) {
+      setIncludeOptionsVisible(false)
+    }else if (event.target.value && !includeOptionsVisible) {
+      setIncludeOptionsVisible(true)
+    }
+  }
   return (
-    <div style={{visibility: visibility}} className="form-section">
+    <div className={"form-section " + display}>
       <h2>Table Name:</h2>
-      <input name="table-name" id="table-name" type="text" required />
-      <label>Temporary</label>
-      <input type="checkbox" name="temporary" onChange={(event)=>setTempOptionsVisible(event.target.checked)}/>
+      <input type="text" {...register("name", {required: true})} />
       <label>Unlogged</label>
-      <input type="checkbox" name="unlogged"/>
-      {/*<select disabled>
-        <option>Local</option>
-        <option>Global</option>
-      </select>*/}
+      <input type="checkbox" {...register("unlogged")}/>
+      <label className="block">
+        Temporary
+        <input type="checkbox" {...register("temporary")} onChange={(event)=>setTempOptionsVisible(event.target.checked)}/>
+      </label>
       {tempOptionsVisible && (
         <div>
           <label>ON COMMIT</label>
@@ -325,99 +217,91 @@ function GeneralTableAttributes({visibility} : {visibility: "visible"|"hidden"|"
           </select>
         </div>
       )}
-      <label>INHERITS</label>
-      <select><option>No Data yet</option></select>
-      <label>LIKE TABLE</label>
-      <select><option>No data yet</option></select>
-      <label>including</label>
-      <select>
-        <option>INCLUDING ALL</option>
-        <option>INCLUDING COMPRESSION</option>
-        <option>INCLUDING CONSTRAINTS</option>
-        <option>INCLUDING COMMENTS</option>
-        <option>INCLUDING GENERATED</option>
-        <option>INCLUDING IDENTITY</option>
-        <option>INCLUDING INDEXES</option>
-        <option>INCLUDING STORAGE</option>
-        <option>INCLUDING STATISTICS</option>
-      </select>
-      <label>PARTITION OF</label>
-      <select><option>no data yet</option></select>
-      <label>PARTITIONED BY</label>
-      <select>
-        <option>RANGE</option>
-        <option>LIST</option>
-        <option>HASH</option>
-      </select>
+      <label className="block">LIKE TABLE</label>
+      <input type="text" {...register("likeTable")} value={copiedTable} onChange={setLikeOption}/>
+      {includeOptionsVisible && <>
+        <label>including</label>
+        <select>
+          <option>INCLUDING ALL</option>
+          <option>INCLUDING COMPRESSION</option>
+          <option>INCLUDING CONSTRAINTS</option>
+          <option>INCLUDING COMMENTS</option>
+          <option>INCLUDING GENERATED</option>
+          <option>INCLUDING IDENTITY</option>
+          <option>INCLUDING INDEXES</option>
+          <option>INCLUDING STORAGE</option>
+          <option>INCLUDING STATISTICS</option>
+        </select>
+      </>}
     </div>
   )
 }
 
-function ColumnDetails({visibility} : {visibility: "visible"|"hidden"|"collapse"}) {
-  const [columnKeys, setColumnKeys] = useState<number[]>([]); // free keys for rendering column components
-  const freeColumnKeys = useRef([1]);
-
-  function addNewColumn() {
-    let newColumnKeys:number[] = [...columnKeys, freeColumnKeys.current.pop() as number]
-
-    if (freeColumnKeys.current.length === 0)
-      freeColumnKeys.current.push(newColumnKeys.length+1);
-    setColumnKeys(newColumnKeys);
+function getTableInfoTabConfig(tableName:string, targetDb: string, serverConfig: any) {
+  return {
+    tabName: "table -- " + tableName,
+    tabType: "table-info",
+    dataDetails: {
+      dbName: targetDb,
+      tableName: "",
+      schemaName: "",
+      serverConfig
+    }
   }
-
-  function removeColumn(renderKey: number) {
-      setColumnKeys(columnKeys.filter((key) => key !== renderKey))
-      freeColumnKeys.current.push(renderKey);
-  }
-
-  return (
-    <div style={{visibility: visibility}} className="form-section">
-      <h3>Columns</h3>
-      {columnKeys.map(key => <ColumnDetailsForm key={key} renderKey={key} removeColumn={removeColumn}/>)}
-      <button type="button" onClick={() => addNewColumn()}>Add Column</button>
-    </div>
-  )
 }
-
 
 export function CreateTable() {
   const [display, setDisplay] = useState<"general"|"columns"|"sql">("general")
-  const formRef = useRef<HTMLFormElement>(null);
-  const serverConnString = useContext(ServerDetailsContext).connString
+  const { control, handleSubmit, register, setValue } = useForm<FormValues>()
+  const { fields, append, remove } = useFieldArray({control, name: "columns"})
+  const tabDetails = useSelector(selectCurrentTab)
+  const config = {...tabDetails.dataDetails.serverConfig, database: tabDetails.dataDetails.dbName}
+  const dispatch = useDispatch()
 
-  function createTable(event) {
-    event.preventDefault();
-    const [newTableName, query] = generateQuery(formRef.current as HTMLFormElement);
+  const onSubmit: SubmitHandler<FormValues> = (data) => {
+    const [newTableName, query] = generateQuery(data);
     console.log(query);
     fetch("http://localhost:4900/mutate-dbData", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({connectionString: serverConnString, query, queryType: "create"}) 
+      body: JSON.stringify({config, query, queryType: "create"}) 
     })
     .then(response => response.json())
     .then(responseBody => {
       if (responseBody.errorMsg) {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
-        alert(newTableName + " was created successfully")
-        // dispatch(tabSwitched({newPage: "table-info", newTableName})) // fix schema bug, Infact the table should be created with the qualified name
-        // add interfce for choosing the schema the new table belongs to if not implemented yet.
+        alert(`${newTableName} created successfully!`)
+        dispatch(tabChangedInPlace(getTableInfoTabConfig(newTableName, tabDetails.dataDetails.dbName, tabDetails.dataDetails.serverConfig))) 
       }
     })
   }
 
+
   return (
-    <form ref={formRef} onSubmit={createTable} id="create-form">
+    <form onSubmit={handleSubmit(onSubmit)} id="create-form">
       <div id="table-attr-selection">
         <button type="button" onClick={() => setDisplay("general")}>General</button>
         <button type="button" onClick={() => setDisplay("columns")}>Column Atributes</button>
         <button type="button" onClick={() => setDisplay("sql")}>SQL</button>
+        <button type="submit">Create Table</button>
       </div>
-      <GeneralTableAttributes visibility={display === "general" ? "visible" : "hidden"}/>
-      <ColumnDetails visibility={display === "columns" ? "visible" : "hidden"}/>
-      <pre style={{visibility: display === "sql" ? "visible" : "hidden"}} className="form-section"></pre>
-      <button type="submit" disabled>Create Table</button>
+
+      <section id="form-sections-container">
+        <GeneralTableAttributes display={display === "general" ? "show" : "hide"} register={register}/>
+        <div className={"form-section " + (display === "columns" ? "show" : "hide")}>
+          <h3>Columns</h3>
+          {fields.map((field, index) => <ColumnDetailsForm key={field.id} index={index} removeColumn={remove} register={register} setValue={setValue} />)}
+          <button onClick={() => append({
+            name: "", dataType: "", collation: "", storage:"", compression: "", constraints: "", typeAttributes: ""}
+          )}>
+            Add
+          </button>
+          <label className="block">Table Constraints</label>
+          <textarea {...register("tableConstraints")}></textarea> 
+        </div>
+      </section>
     </form>
   )
 }

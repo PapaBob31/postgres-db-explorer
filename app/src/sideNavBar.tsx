@@ -27,7 +27,7 @@ interface TableBtnProps {
 function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnProps) {
   const parentDb = useContext(ParentDb)
   const dispatch = useDispatch()
-  const connectedServerDetails =  useContext(ServerDetailsContext)
+  const connectedServerDetails = useContext(ServerDetailsContext)
   const dataDetails = {tableName, schemaName, dbName: parentDb, serverConfig: connectedServerDetails.config}
 
   return (
@@ -79,7 +79,19 @@ function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: s
 
 function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]}}) {
   const [visible, setVisible] = useState(false);
-  // const dispatch =  useDispatch();
+  const connectedServerDetails = useContext(ServerDetailsContext)
+  const dispatch =  useDispatch();
+
+  const newTabletab = {
+    tabName: "create-table",
+    tabType: "create-table-form",
+    dataDetails: {
+      dbName: connectedServerDetails.initDb,
+      tableName: "",
+      schemaName: "",
+      serverConfig: connectedServerDetails.config
+    }
+  }
 
   return (
     <>
@@ -87,9 +99,7 @@ function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]
       {visible && (
         <>
           <SchemaTables schemaDetails={schemaDetails}/>
-          {/*<button id="add-table-btn" onClick={() => dispatch(tabCreated({tabType: "create-table-form"}))}>Add Table</button>*/}
-          <button id="add-table-btn">Add Table</button>
-          {/*<button onClick={() => dispatch(tabCreated({tabType: "new-type-form"}))}>Add type</button>*/}
+          <button id="add-table-btn" onClick={() => dispatch(tabCreated(newTabletab))}>Add Table</button>
           <button>Add type</button>
         </>)
       }
