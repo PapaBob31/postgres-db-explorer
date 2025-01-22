@@ -57,28 +57,12 @@ function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnP
 }
 
 
-function SchemaTables({schemaDetails} : {schemaDetails: {name: string, tables: string[]}}) {
+function SchemaTables({schemaName}: {schemaName: string}) {
   const [displayedMenu, setDisplayedMenu] = useState("");
-
-  useEffect(() => {
-    function hideAnyVisibleMenu() {
-      setDisplayedMenu("false")
-    }
-    document.addEventListener("click", hideAnyVisibleMenu)
-    return () => document.removeEventListener("click", hideAnyVisibleMenu);
-  })
-  
-  return (
-    <ul>
-      {schemaDetails.tables.map(tableName => (
-        <TableBtn schemaName={schemaDetails.name} tableName={tableName} key={tableName} setVisibleMenu={setDisplayedMenu} visibleMenu={displayedMenu}/>
-      ))}
-    </ul>
-  )
-}
-
-function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]}}) {
-  const [visible, setVisible] = useState(false);
+  const [tables, setTables] = useState<string[]>([])
+  const [tablesVisible, setTablesVisible] = useState(false)
+  const config = useSelector(selectCurrentTabServerConfig)
+  const fetchedTables = useRef(false)
   const connectedServerDetails = useContext(ServerDetailsContext)
   const dispatch =  useDispatch();
 
@@ -93,13 +77,96 @@ function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]
     }
   }
 
+  useEffect(() => {
+    if (!fetchedTables.current) {
+      getDbTables()
+    }
+    function hideAnyVisibleMenu() {
+      setDisplayedMenu("false")
+    }
+
+    document.addEventListener("click", hideAnyVisibleMenu)
+    return () => document.removeEventListener("click", hideAnyVisibleMenu);
+  }, [displayedMenu])
+
+  function getDbTables() {
+    fetch("http://localhost:4900/get-tables", {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({config})
+    })
+    .then(response => response.json())
+    .then(resBody => {
+      if (resBody.errorMsg) {
+        alert(resBody.errroMsg)
+      }else {
+        setTables(resBody.data)
+        fetchedTables.current = true;
+      }
+    })
+  }
+
   return (
     <>
-      <button onClick={() => setVisible(!visible)}>{schemaDetails.name}</button>
+      <button onClick={() => setTablesVisible(!tablesVisible)}>Tables</button>
+      {tablesVisible && (fetchedTables.current ?
+        <>
+          <button id="add-table-btn" onClick={() => dispatch(tabCreated(newTabletab))}>Add Table</button>
+          <ul>
+            {tables.map(tableName => (
+              <TableBtn schemaName={schemaName} tableName={tableName} key={tableName} setVisibleMenu={setDisplayedMenu} visibleMenu={displayedMenu}/>
+            ))}
+          </ul>
+        </> : "Loading...")
+      }
+    </>
+  )
+}
+
+function SchemaViews({schemaName} : {schemaName: string}) {
+  const [viewsVisible, setViewsVisible] = useState(false);
+  const [views, setViews] = useState<string[]>([])
+  const fetchedViews = useRef(false)
+  const config = useSelector(selectCurrentTabServerConfig)
+
+  useEffect(() => {
+    if (!fetchedViews.current) {
+      fetch("http://localhost:4900/get-views", {
+        method: "POST",
+        credentials: "include",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({config})
+      }).then(response => response.json())
+      .then(resBody => {
+        if (resBody.errorMsg) {
+          alert(resBody.errroMsg)
+        }else {
+          setViews(resBody.data)
+          fetchedViews.current = true
+        }
+      })
+    }
+  }, [])
+
+  return (
+    <>
+      <button onClick={() => setViewsVisible(!viewsVisible)}>Views</button>
+      <ul>{viewsVisible && (fetchedViews.current ? views.map((view) => <li key={view}><button>{view}</button></li>) : "Loading...")}</ul>
+    </>
+  )
+}
+
+
+function Schema({name}: {name: string}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <>
+      <button onClick={() => setVisible(!visible)}>{name}</button>
       {visible && (
         <>
-          <SchemaTables schemaDetails={schemaDetails}/>
-          <button id="add-table-btn" onClick={() => dispatch(tabCreated(newTabletab))}>Add Table</button>
+          <SchemaTables schemaName={name}/>
+          <SchemaViews schemaName={name}/>
           <button>Add type</button>
         </>)
       }
@@ -108,18 +175,37 @@ function Schema({schemaDetails}: {schemaDetails: {name: string, tables: string[]
 }
 
 function DataBase({dbName}: {dbName: string}) {
-  const schemas = useRef<{name: string; tables: string[];}[]>([]);
+  const schemas = useRef<string[]>([]);
   const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
   const connectedServerDetails = useContext(ServerDetailsContext)
   const config = useSelector(selectCurrentTabServerConfig)
 
   useEffect(() => {
     if (connectedServerDetails.connectedDbs.includes(dbName)){
-      fetchDbDetails()
+      getDbSchemas()
     }
   }, [dbName])
 
-  function fetchDbDetails() {
+  function getDbSchemas() {
+    fetch("http://localhost:4900/get-db-schemas", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      body: JSON.stringify({config})
+    })
+    .then(response  => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        alert(responseBody.errorMsg)
+      }else {
+        schemas.current = responseBody.data
+        console.log(responseBody.data)
+        setDbObjectsVisible(true)
+      }
+    })
+  }
+
+  /*function fetchDbDetails() {
     fetch("http://localhost:4900/get-db-details", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
@@ -135,14 +221,14 @@ function DataBase({dbName}: {dbName: string}) {
         setDbObjectsVisible(true)
       }
     });
-  }
+  }*/
 
   function toggleChildrenVisibilty() {
     if (dbObjectsVisible){
       setDbObjectsVisible(false);
       return;
     }else if (schemas.current.length === 0) {
-      fetchDbDetails()
+      getDbSchemas()
     }else {
       setDbObjectsVisible(true)
     }
@@ -153,11 +239,12 @@ function DataBase({dbName}: {dbName: string}) {
       <button onClick={toggleChildrenVisibilty}>{dbName}</button>
       {dbObjectsVisible && (
         <ParentDb.Provider value={dbName}>
+          <h1>Schemas</h1>
           <ul>
             {schemas.current.map(
               (schema) => (
-                <li key={schema.name}>
-                  <Schema schemaDetails={schema} />
+                <li key={schema}>
+                  <Schema name={schema} />
                 </li>
               )
             )}

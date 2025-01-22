@@ -117,6 +117,27 @@ async function processReq(sqlQuery, pool) {
 	}
 }
 
+async function getDbSchemas(pool) {
+	let client;
+	try {
+		client = await pool.connect();
+	}catch(error) {
+		console.log(error)
+		return {msg: null, errorMsg: `Something went wrong while getting db details`, data: null};
+	}
+
+	try {
+		let schemaData = await client.query("SELECT table_name FROM information_schema.views;");
+		const data = schemaData.rows.map(row => row.table_name);
+		return {msg: null, errorMsg: null, data};
+	}catch(error) {
+		console.log(error)
+		return {msg: null, errorMsg: "Something went wrong!", data: null};
+	}finally {
+		client.release()
+	}
+}
+
 async function getDbDetails(pool) {
 	let client;
 	try {
@@ -272,17 +293,16 @@ app.post("/delete-row", async (req, res) => {
 	}
 })
 
-app.post('/get-db-details', async (req, res) => {
+/*app.post('/get-db-details', async (req, res) => {
 	const pool = await getConnection(req.body.config)
 	const processedData = await getDbDetails(pool)
 	if (processedData.errorMsg) {
 		res.status(400).json({errorMsg: processedData.errorMsg, data: null, msg: null})
 	}else res.status(200).json(processedData);
-})
+})*/
 
 app.post("/", async (req, res) => {
 	const pool = await getConnection(req.body.config)
-	console.log("HERE:", pool);
 	const results = await processReq("SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;", pool)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
@@ -294,6 +314,40 @@ app.post("/", async (req, res) => {
 		res.status(200).json({errorMsg: null, data: responseData, msg: null})
 	}
 	
+})
+
+app.post("/get-tables", async (req, res) => {
+	const pool = await getConnection(req.body.config)
+	const results = await processReq("SELECT table_name FROM information_schema.tables", pool)
+	if (results.errorMsg) {
+		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
+	}else {
+		const responseData: string[] = results.data.rows.map(row => row["table_name"])
+		res.status(200).json({errorMsg: null, data: responseData, msg: null})
+	}
+})
+
+app.post("/get-views", async (req, res) => {
+	const pool = await getConnection(req.body.config)
+	const results = await processReq("SELECT table_name FROM information_schema.views", pool)
+	if (results.errorMsg) {
+		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
+	}else {
+		const responseData: string[] = results.data.rows.map(row => row["table_name"])
+		res.status(200).json({errorMsg: null, data: responseData, msg: null})
+	}
+})
+
+app.post("/get-db-schemas", async (req, res) => {
+	const pool = await getConnection(req.body.config)
+	const queryResult = await processReq("SELECT schema_name FROM information_schema.schemata", pool)
+
+	if (queryResult.errorMsg) {
+		res.status(400).json(queryResult)
+	}else {
+		const responseData: string[] = queryResult.data.rows.map(row => row["schema_name"])
+		res.status(200).json({errorMsg: null, data: responseData, msg: null})
+	}
 })
 
 console.log(`Listening on port ${PortNo}`)
