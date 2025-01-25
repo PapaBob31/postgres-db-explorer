@@ -1,17 +1,6 @@
 const fs = require("node:fs") //  maybe change to sqlite later
+import {type ServerDetails} from "./index"
 
-interface ConnectionParams {
-	name: string,
-	user: string;
-	password: string;
-	host: string;
-	database: string;
-	port: number;
-	saveConnDetails: boolean;
-	ssl: boolean;
-	isConnUri: boolean;
-	connectionUri: string;
-}
 
 export function getSavedServersDetails() {
 	let data: string = "";
@@ -26,7 +15,7 @@ export function getSavedServersDetails() {
 }
 
 
-export function saveNewServerDetail(reqBody: ConnectionParams) {
+export function saveNewServerDetail(reqBody: ServerDetails) {
 	const currentlySavedData = JSON.parse(getSavedServersDetails())
 	const usefulData = Object()
 	for (let key in reqBody) {

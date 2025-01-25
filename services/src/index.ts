@@ -6,56 +6,34 @@ const express = require("express");
 const cookieParser = require('cookie-parser');
 const app = express();
 const PortNo = 4900;
-
-interface PoolObj {
-	connectionConfig: any
-	pool: any
-}
+const poolMap = {}
 // don't forget to implement clean exit
 // implement csrf protection && XSS
-const pools:PoolObj[] = []
 
-function bothAreEqual(config1: any, config2: any) { // this is rubbish, come back to rewrite asap
-	for (let key in Object.keys(config1)) {
-		if (config1[key] !== config2[key]) {
-			return false
-		}
-	}
-	return true
+function generateUniqueId() {
+  let key = "";
+  const alphaNumeric = "0abcdefghijklmnopqrstuvwxyz123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  for (let i=0; i<15; i++) {
+    const randIndex = Math.floor(Math.random()  * alphaNumeric.length);
+    key += alphaNumeric[randIndex];
+  }
+  return key
 }
 
-function getPool(connectionConfig: any) {
-	for (const pool of pools) {
-		if (bothAreEqual(pool.connectionConfig, connectionConfig)){
-			return pool.pool;
-		}
-	}
-	return null
-}
 
 async function createNewPool(connectionConfig: any) {
-	console.log(connectionConfig)
-	let newPool = new Pool(connectionConfig)
-	let testClient;
-
+	let newPool = new Pool({...connectionConfig, idleTimeoutMillis: 300000, application_name: "postgres_db_explorer"}) // timeout is 5 minutes
+	let poolId = ""
 	try { // test if connectionConfig is valid
-		testClient = await newPool.connect()
-		pools.push({connectionConfig, pool: newPool})
-		await testClient.release()
+		let testClient = await newPool.connect()
+		poolId = generateUniqueId()
+		poolMap[poolId] = newPool
+		testClient.release()
 	}catch(err) {
 		console.log(err)
-		newPool = null;
+		poolId = ""
 	}
-	return newPool
-}
-
-async function getConnection(connectionConfig: any) {
-	const existingPool = getPool(connectionConfig)
-	if (existingPool) {
-		return existingPool
-	}
-
-	return await createNewPool(connectionConfig)
+	return poolId
 }
 
 
@@ -78,19 +56,25 @@ function setCorsHeaders(req, res, next) {
 	}else next()
 }
 
-// function validateConnParams(req, res, next) {
-// 	const whitelist  =  ["/connect-db", "/saved-servers"]
-// 	if (whitelist.includes(req.originalUrl))
-// 		next();
+function validateConnParams(req, res, next) {
+	const whitelist  =  ["/connect-db", "/saved-servers"]
+	if (whitelist.includes(req.originalUrl)) {
+		next();
+		return;
+	}
 
-// 	const validPool =  await 
-// }
+	const pool = poolMap[req.body.connectionId]
 
-app.use(logRequestDetails, setCorsHeaders)
+	if (!pool){
+		res.status(400).json({msg: null, errorMsg: "Bad request! Invalid `connectionId`", data: null})
+		return
+	}else next()
+}
 
-app.use(["/query-table", "/create-table"], (req, res, next) => {
+app.use(logRequestDetails, setCorsHeaders, validateConnParams)
+
+app.use(["/query-table", "/create-table", "/get-tables", "/get-views"], (req, res, next) => {
 	if (!req.body.query){ // TODO: learn how to prevent sql injection
-		console.log("Invalid request body")
 		res.status(400).json({errorMsg: "Invalid data body", data: null})
 	}else next();
 })
@@ -117,88 +101,26 @@ async function processReq(sqlQuery, pool) {
 	}
 }
 
-async function getDbSchemas(pool) {
-	let client;
-	try {
-		client = await pool.connect();
-	}catch(error) {
-		console.log(error)
-		return {msg: null, errorMsg: `Something went wrong while getting db details`, data: null};
-	}
-
-	try {
-		let schemaData = await client.query("SELECT table_name FROM information_schema.views;");
-		const data = schemaData.rows.map(row => row.table_name);
-		return {msg: null, errorMsg: null, data};
-	}catch(error) {
-		console.log(error)
-		return {msg: null, errorMsg: "Something went wrong!", data: null};
-	}finally {
-		client.release()
-	}
+interface ConnectionParams {
+	user?: string;
+	password?: string;
+	host?: string;
+	port?: string;
+	ssl?: string;
+	database?: string;
 }
 
-async function getDbDetails(pool) {
-	let client;
-	try {
-		client = await pool.connect()
-	}catch(error) {
-		console.log(error)
-		return {msg: null, errorMsg: `Something went wrong while getting db details`, data: null};
-	}
-
-	try {
-		let schemaData = await client.query(
-			"SELECT table_schema, table_name FROM information_schema.tables;"
-			);
-		const schemaNameKey = schemaData.fields[0].name;
-		const tableNameKey = schemaData.fields[1].name;
-
-		// Array of key-value pairs where key is a schema name and 
-		// value is an array of the names of the tables present in the schema
-		const data: {name: string, tables: string[]}[] = [];
-
-		for (let i=0; i<schemaData.rows.length; i++) {
-			let schemaObj: {name: string, tables: string[]} = null;
-			for (let j=0; j<data.length; j++) {
-				if (data[j].name === schemaData.rows[i][schemaNameKey]) {
-					schemaObj = data[j];
-					break;
-				}
-			}
-			if (!schemaObj) {
-				schemaObj = {name: schemaData.rows[i][schemaNameKey], tables: [schemaData.rows[i][tableNameKey]]};
-				data.push(schemaObj);
-			}else schemaObj.tables.push(schemaData.rows[i][tableNameKey])
-		}
-		
-		return {msg: null, errorMsg: null, data};
-	}catch(error) {
-		console.log(error)
-		return {msg: null, errorMsg: "Something went wrong!", data: null};
-	}finally {
-		client.release()
-	}
-}
-
-function getServerConfig(reqBody: any) {
-	const config = Object()
-	const restricted = ["name", "isConnUri", "connectionUri", "saveConnDetails"]
-
-	for (let key in reqBody) {
-		if (!restricted.includes(key)) {
-			config[key] = reqBody[key]
-		}
-	}
-
-	return config;
+export interface ServerDetails {
+	name: string;
+	isConnUri: boolean;
+	connectionUri: string;
+	connectionParams: ConnectionParams;
+	saveConnDetails: boolean;
 }
 
 app.post("/connect-db", async (req, res) => {
-	let config = getServerConfig(req.body)
-
-	const pool = await getConnection(config) // readup more on this pooling stuff
-	if (!pool) {
+	const poolId = await createNewPool(req.body.connectionParams)
+	if (!poolId) {
 		res.status(400).json({msg: null, errorMsg: "Something went wrong while trying to connect to the db", data: null});
 		return;
 	}
@@ -209,8 +131,8 @@ app.post("/connect-db", async (req, res) => {
 	}else if (req.body.saveConnDetails) {
 		saveNewServerDetail(req.body)
 	}
-
-	res.status(200).json({msg: "Db connected successfully", errorMsg: null, data: null})
+	const queryResults = await processReq("SELECT datname FROM pg_stat_activity WHERE application_name='postgres_db_explorer'", poolMap[poolId])
+	res.status(200).json({data: {connectionId: poolId, name: queryResults.data.rows[0].datname}, errorMsg: null, msg: null})
 })
 
 app.get("/saved-servers", (_req, res) => {
@@ -219,7 +141,12 @@ app.get("/saved-servers", (_req, res) => {
 })
 
 app.post("/update-table", async (req, res) => {
-	const pool = await getConnection(req.body.config) // what if somethibng goes wrrong during `getConnection`
+	const pool =  poolMap[req.body.connectionId]
+
+	if (!pool){
+		res.status(400).json({msg: null, errorMsg: "Bad request! Invalid `connectionId`", data: null})
+		return
+	}
 	const results = await processReq(req.body.query, pool)
 	let updates = null;
 
@@ -239,7 +166,7 @@ app.post("/update-table", async (req, res) => {
 })
 
 app.post("/alter-table", async (req, res) => {
-	const pool = await getConnection(req.body.config)
+	const pool =  poolMap[req.body.connectionId]
 	const results = await processReq(req.body.query, pool);
 	if (results.errorMsg) {
 		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
@@ -248,7 +175,7 @@ app.post("/alter-table", async (req, res) => {
 })
 
 app.post("/mutate-dbData", async (req, res) => {
-	const pool = await getConnection(req.body.config)
+	const pool =  poolMap[req.body.connectionId]
 	const results = await processReq(req.body.query, pool);
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null})
@@ -261,7 +188,7 @@ app.post("/mutate-dbData", async (req, res) => {
 })
 
 app.post("/query-table", async (req, res) => { // Add robust processing for relations that doesn't exist
-	const pool = await getConnection(req.body.config)
+	const pool =  poolMap[req.body.connectionId]
 	const results = await processReq(req.body.query, pool)
 	if (results.errorMsg) {
 		res.status(400).json({msg: null, errorMsg: results.errorMsg, data: null})
@@ -273,7 +200,7 @@ app.post("/query-table", async (req, res) => { // Add robust processing for rela
 
 app.post("/drop-table", async (req, res) => {
 	const cascadeString = req.body.cascade ? "CASCADE" : "RESTRICT";
-	const pool = getConnection(req.body.config)
+	const pool = poolMap[req.body.connectionId]
 	const results = await processReq(`DROP TABLE ${req.body.tableName} ${cascadeString};`, pool)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg})
@@ -283,7 +210,7 @@ app.post("/drop-table", async (req, res) => {
 })
 
 app.post("/delete-row", async (req, res) => {
-	const pool = await getConnection(req.body.config)
+	const pool = poolMap[req.body.connectionId]
 	const {targetTable, rowId} = req.body
 	const results = await processReq(`DELETE FROM ${targetTable} WHERE ctid = '${rowId}';`, pool)
 	if (!results.errorMsg) {
@@ -293,16 +220,8 @@ app.post("/delete-row", async (req, res) => {
 	}
 })
 
-/*app.post('/get-db-details', async (req, res) => {
-	const pool = await getConnection(req.body.config)
-	const processedData = await getDbDetails(pool)
-	if (processedData.errorMsg) {
-		res.status(400).json({errorMsg: processedData.errorMsg, data: null, msg: null})
-	}else res.status(200).json(processedData);
-})*/
-
 app.post("/", async (req, res) => {
-	const pool = await getConnection(req.body.config)
+	const pool = poolMap[req.body.connectionId]
 	const results = await processReq("SELECT rolname FROM pg_roles; SELECT datname FROM pg_database;", pool)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
@@ -313,12 +232,11 @@ app.post("/", async (req, res) => {
 		responseData.databases = dbData[1].rows.map(row => row[dbData[1].fields[0].name]);
 		res.status(200).json({errorMsg: null, data: responseData, msg: null})
 	}
-	
 })
 
 app.post("/get-tables", async (req, res) => {
-	const pool = await getConnection(req.body.config)
-	const results = await processReq("SELECT table_name FROM information_schema.tables", pool)
+	const pool =  poolMap[req.body.connectionId]
+	const results = await processReq(req.body.query, pool)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
 	}else {
@@ -328,8 +246,8 @@ app.post("/get-tables", async (req, res) => {
 })
 
 app.post("/get-views", async (req, res) => {
-	const pool = await getConnection(req.body.config)
-	const results = await processReq("SELECT table_name FROM information_schema.views", pool)
+	const pool = poolMap[req.body.connectionId]
+	const results = await processReq(req.body.query, pool)
 	if (results.errorMsg) {
 		res.status(400).json({errorMsg: results.errorMsg, data: null, msg: null})
 	}else {
@@ -339,7 +257,7 @@ app.post("/get-views", async (req, res) => {
 })
 
 app.post("/get-db-schemas", async (req, res) => {
-	const pool = await getConnection(req.body.config)
+	const pool =  poolMap[req.body.connectionId]
 	const queryResult = await processReq("SELECT schema_name FROM information_schema.schemata", pool)
 
 	if (queryResult.errorMsg) {
