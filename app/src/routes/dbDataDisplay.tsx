@@ -3,17 +3,17 @@ import { TableRowsDisplay, NewTypeForm, DashBoard } from "./dbData"
 import { CreateTable } from "./newTableForm";
 import { useSelector, useDispatch } from "react-redux"
 // import { ServerDetailsContext, generateUniqueId } from "../main"
-import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched, selectCurrentTabServerConfig } from "../store"
+import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched } from "../store"
 
 
-export function getData(query: string, config: any) {
+export function getData(query: string, dbConnectionId: string) {
   return fetch("http://localhost:4900/query-table", {
     headers: {
       "Content-Type": "application/json"
     },
     credentials: "include",
     method: "POST",
-    body: JSON.stringify({config, query}) // TODO: limit the amount of data sent back
+    body: JSON.stringify({connectionId: dbConnectionId, query}) // TODO: limit the amount of data sent back
   }).then(response => response.json())
 }
 
@@ -40,11 +40,11 @@ function QueryResultTable({data} : {data: {fields: string[], rows: any[]}}) {
 
 function SQLConsole() {
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
-  const config = useSelector(selectCurrentTabServerConfig)
+  const { dbConnectionId } = useSelector(selectCurrentTab).dataDetails;
   const [lastQueryData, setLastQueryData] = useState(null)
 
   async function runQuery() {
-    const queryResult = await getData(textAreaRef.current!.value, config)
+    const queryResult = await getData(textAreaRef.current!.value, dbConnectionId)
     setLastQueryData(queryResult.data) 
   }
   return (<>
@@ -133,11 +133,10 @@ function InsertForm() {
   const [insertRowKeys, setInsertRowKeys] = useState<number[]>([1]);
   const freeKeys = useRef<number[]>([]);
   // const dispatch = useDispatch()
-  const tabDetails = useSelector(selectCurrentTab)
-  const config = {...tabDetails.dataDetails.serverConfig, database: tabDetails.dataDetails.dbName}
+  const { dbConnectionId } = useSelector(selectCurrentTab).dataDetails
 
   useEffect(() => {
-    getData(query, config)
+    getData(query, dbConnectionId)
     .then(responseData => setColumnData(responseData.data))
   }, [])
 
@@ -164,7 +163,7 @@ function InsertForm() {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({query, queryType: "insert"}) 
+      body: JSON.stringify({connectionId: dbConnectionId, query, queryType: "insert"}) 
     })
     .then(response => response.json())
     .then(responseBody => {
@@ -292,13 +291,13 @@ export default function DbDataDisplay() {
   create role, set role privieges, group role, drop role
 
   ALWAYS REMEMBER THAT THE GOAL IS TO MAKE IT WAY EASIER THAN TYPING THE COMMANDS MANUALLY
+  try and reduce the number of clicks needed to at most 3 before getting to use any ui features
   Change data fetching mechanism to tan stack query or react query
   Implement checking if a table exists before query incase a 
   previously existing table has been deleted outside the guis
   maybe put some state update logic inside a reducer
   try setting an identifier name to exceed the NAMEDATALEN limit in the gui
   quoted identifier
-  single quotes delimit string constants
   Implement measures and checks for data that has already been edited in the db but the old value is still being displayed here
   when writing the insert interface, try and check data types like character varying for correctness before sending it off to the server
 */

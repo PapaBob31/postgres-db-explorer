@@ -237,15 +237,14 @@ function GeneralTableAttributes({display, register} : {display: "show"|"hide", r
   )
 }
 
-function getTableInfoTabConfig(tableName:string, targetDb: string, serverConfig: any) {
+function getTableInfoTabConfig(tableName:string, dbConnectionId: string) {
   return {
     tabName: "table -- " + tableName,
     tabType: "table-info",
     dataDetails: {
-      dbName: targetDb,
+      dbConnectionId,
       tableName: "",
       schemaName: "",
-      serverConfig
     }
   }
 }
@@ -255,7 +254,6 @@ export function CreateTable() {
   const { control, handleSubmit, register, setValue } = useForm<FormValues>()
   const { fields, append, remove } = useFieldArray({control, name: "columns"})
   const tabDetails = useSelector(selectCurrentTab)
-  const config = {...tabDetails.dataDetails.serverConfig, database: tabDetails.dataDetails.dbName}
   const dispatch = useDispatch()
 
   const onSubmit: SubmitHandler<FormValues> = (data) => {
@@ -265,7 +263,7 @@ export function CreateTable() {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({config, query, queryType: "create"}) 
+      body: JSON.stringify({connectionId: tabDetails.dataDetails.dbConnectionId, query, queryType: "create"}) 
     })
     .then(response => response.json())
     .then(responseBody => {
@@ -273,7 +271,7 @@ export function CreateTable() {
         alert(`${responseBody.errorMsg} Please try again!`)
       }else {
         alert(`${newTableName} created successfully!`)
-        dispatch(tabChangedInPlace(getTableInfoTabConfig(newTableName, tabDetails.dataDetails.dbName, tabDetails.dataDetails.serverConfig))) 
+        dispatch(tabChangedInPlace(getTableInfoTabConfig(newTableName, tabDetails.dataDetails.dbConnectionId))) 
       }
     })
   }

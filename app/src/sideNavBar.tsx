@@ -1,20 +1,18 @@
 import { useEffect, useRef, useState, createContext, useContext } from "react"
-import { useDispatch, useSelector } from "react-redux"
-import { type ServerDetails, tabCreated, selectCurrentTabServerConfig, getServerObjects } from "./store"
+import { useDispatch } from "react-redux"
+import { type ServerDetails, type ConnectedDbDetails,  tabCreated, addNewConnectedDb } from "./store"
+import { connectDb } from "./routes/dbConnect"
 
 export const ServerDetailsContext = createContext<ServerDetails>({
   name: "",
-  config: null,
   isConnUri: false,
   connectionUri: "",
-  initDb: "",
-  fetchedObjs: false,
-  connectedDbs: [] as string[],
-  roles: [],
-  databases: []
+  connectionParams: {},
+  connectedDbs: [] as ConnectedDbDetails[],
 })
 
-const ParentDb = createContext("")
+const ParentDb = createContext({dbName: "", dbConnectionId: ""})
+
 
 interface TableBtnProps {
   schemaName: string,
@@ -24,11 +22,10 @@ interface TableBtnProps {
 }
 
 
-function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}:TableBtnProps) {
-  const parentDb = useContext(ParentDb)
+function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}: TableBtnProps) {
+  const { dbConnectionId } = useContext(ParentDb)
   const dispatch = useDispatch()
-  const connectedServerDetails = useContext(ServerDetailsContext)
-  const dataDetails = {tableName, schemaName, dbName: parentDb, serverConfig: connectedServerDetails.config}
+  const dataDetails = {tableName, schemaName, dbConnectionId}
 
   return (
     <li key={tableName} className="db-table-rep">
@@ -61,19 +58,17 @@ function SchemaTables({schemaName}: {schemaName: string}) {
   const [displayedMenu, setDisplayedMenu] = useState("");
   const [tables, setTables] = useState<string[]>([])
   const [tablesVisible, setTablesVisible] = useState(false)
-  const config = useSelector(selectCurrentTabServerConfig)
   const fetchedTables = useRef(false)
-  const connectedServerDetails = useContext(ServerDetailsContext)
-  const dispatch =  useDispatch();
+  const { dbConnectionId } = useContext(ParentDb)
+  const dispatch = useDispatch();
 
   const newTabletab = {
     tabName: "create-table",
     tabType: "create-table-form",
     dataDetails: {
-      dbName: connectedServerDetails.initDb,
+      dbConnectionId,
       tableName: "",
-      schemaName: "",
-      serverConfig: connectedServerDetails.config
+      schemaName: schemaName,
     }
   }
 
@@ -93,7 +88,10 @@ function SchemaTables({schemaName}: {schemaName: string}) {
     fetch("http://localhost:4900/get-tables", {
       method: "POST",
       headers: {"content-type": "application/json"},
-      body: JSON.stringify({config})
+      body: JSON.stringify({
+        connectionId: dbConnectionId,
+        query: `SELECT table_name FROM INFORMATION_SCHEMA.tables WHERE table_schema = '${schemaName}'`
+      })
     })
     .then(response => response.json())
     .then(resBody => {
@@ -123,11 +121,11 @@ function SchemaTables({schemaName}: {schemaName: string}) {
   )
 }
 
-function SchemaViews({schemaName} : {schemaName: string}) {
+function SchemaViews({schemaName} : {schemaName: string}) { // start here. Make schema views acceot both db name and connectionid as context
   const [viewsVisible, setViewsVisible] = useState(false);
   const [views, setViews] = useState<string[]>([])
   const fetchedViews = useRef(false)
-  const config = useSelector(selectCurrentTabServerConfig)
+  const parentDb = useContext(ParentDb)
 
   useEffect(() => {
     if (!fetchedViews.current) {
@@ -135,7 +133,10 @@ function SchemaViews({schemaName} : {schemaName: string}) {
         method: "POST",
         credentials: "include",
         headers: {"content-type": "application/json"},
-        body: JSON.stringify({config})
+        body: JSON.stringify({
+          connectionId: parentDb.dbConnectionId,
+          query: `SELECT table_name FROM INFORMATION_SCHEMA.views WHERE table_schema = '${schemaName}'`
+        })
       }).then(response => response.json())
       .then(resBody => {
         if (resBody.errorMsg) {
@@ -172,26 +173,39 @@ function Schema({name}: {name: string}) {
       }
     </>
   )
-}
+} 
+
 
 function DataBase({dbName}: {dbName: string}) {
   const schemas = useRef<string[]>([]);
-  const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
+  const [schemasFetchStatus, setSchemasFetchStatus] = useState("")
   const connectedServerDetails = useContext(ServerDetailsContext)
-  const config = useSelector(selectCurrentTabServerConfig)
+  const connectionId = useRef(getDbConnectionId(dbName, connectedServerDetails.connectedDbs))
+  const [dbObjectsVisible, setDbObjectsVisible] = useState(false)
+  const dispatch =  useDispatch()
 
   useEffect(() => {
-    if (connectedServerDetails.connectedDbs.includes(dbName)){
+    if (connectionId.current) {
+      setSchemasFetchStatus("pending")
       getDbSchemas()
     }
-  }, [dbName])
+  }, [connectionId.current])
+
+  function getDbConnectionId(dbName: string, connectedDbs: ConnectedDbDetails[]) {
+    for (let dbDetails of connectedDbs) {
+      if (dbDetails.name === dbName) {
+        return dbDetails.connectionId
+      }
+    }
+    return null
+  }
 
   function getDbSchemas() {
     fetch("http://localhost:4900/get-db-schemas", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({config})
+      body: JSON.stringify({connectionId: connectionId.current})
     })
     .then(response  => response.json())
     .then(responseBody => {
@@ -200,57 +214,78 @@ function DataBase({dbName}: {dbName: string}) {
       }else {
         schemas.current = responseBody.data
         console.log(responseBody.data)
-        setDbObjectsVisible(true)
+        setSchemasFetchStatus("complete")
       }
     })
   }
 
-  /*function fetchDbDetails() {
-    fetch("http://localhost:4900/get-db-details", {
-      credentials: "include",
-      headers: {"Content-Type": "application/json"},
-      method: "POST",
-      body: JSON.stringify({config})
-    })
-    .then(response => response.json())
-    .then(responseBody => {
-      if (responseBody.errorMsg) {
-        alert(responseBody.errorMsg)
-      }else {
-        schemas.current = responseBody.data
-        setDbObjectsVisible(true)
-      }
-    });
-  }*/
-
-  function toggleChildrenVisibilty() {
-    if (dbObjectsVisible){
-      setDbObjectsVisible(false);
-      return;
-    }else if (schemas.current.length === 0) {
-      getDbSchemas()
-    }else {
-      setDbObjectsVisible(true)
+  async function openNewConsole() {
+    if (!connectionId.current) {
+      await connectToDb()
     }
+    dispatch(tabCreated({
+      tabName: "SQL-Console",
+      tabType: "SQL-Console",
+      dataDetails: {
+        dbConnectionId: connectionId.current as string,
+        tableName: "",
+        schemaName: "",
+      }
+    }))
+  }
+
+  async function connectToDb() { // how do you add types to fetch api?
+    const payload = {
+      name: "",
+      isConnUri: false,
+      connectionUri: "",
+      connectionParams: {...connectedServerDetails.connectionParams, database: dbName}
+    }
+    const response = await connectDb(payload, false)
+
+    if (!response) {
+      alert("Internet connection Error: Check your internet connection and if the database is reachable")
+      return;
+    }
+
+    if (response && !response.ok) {
+      alert(`Error ${response.status} Something went wrong while trying to connect to db ${dbName}`)
+      return;
+    }
+
+    const dbDetails = await response.json()
+    connectionId.current = dbDetails.data.connectionId
+    dispatch(addNewConnectedDb({serverName: connectedServerDetails.name, dbDetails: dbDetails.data}))
+  }
+
+  async function toggleChildrenVisibilty() {
+    if (!connectionId.current) {
+      connectToDb()
+    }
+    setDbObjectsVisible(!dbObjectsVisible)
   }
 
   return (
     <li>
       <button onClick={toggleChildrenVisibilty}>{dbName}</button>
-      {dbObjectsVisible && (
-        <ParentDb.Provider value={dbName}>
-          <h1>Schemas</h1>
-          <ul>
-            {schemas.current.map(
-              (schema) => (
-                <li key={schema}>
-                  <Schema name={schema} />
-                </li>
-              )
-            )}
-          </ul>
-        </ParentDb.Provider>
-      )}
+      {dbObjectsVisible && (<>
+        <button onClick={openNewConsole} type="button">SQL console</button>
+        <h1>Schemas</h1>
+        {schemasFetchStatus === "complete" && (
+          <ParentDb.Provider value={{dbName, dbConnectionId: connectionId.current!}}>
+            <ul>
+              {schemas.current.map(
+                (schema) => (
+                  <li key={schema}>
+                    <Schema name={schema} />
+                  </li>
+                )
+              )}
+            </ul>
+          </ParentDb.Provider>
+        )}
+        {schemasFetchStatus === "pending" && "Loading.."}
+      </>)}
     </li>
   )
 }
@@ -284,53 +319,89 @@ export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
   )
 }
 
-function getNewDashboardTabObj(serverConfig: any, targetDb: string) {
+function getNewDashboardTabObj(dbConnectionId: string) {
   return {
     tabName: "dashboard",
     tabType: "dashboard",
     dataDetails: {
-      dbName: targetDb,
+      dbConnectionId,
       tableName: "",
       schemaName: "",
-      serverConfig
     }
   }
 }
 
+function getServerObjects(connectionId: string) {
+  return fetch("http://localhost:4900", {
+    credentials: "include",
+    headers: {"Content-Type": "application/json"},
+    method: "POST", // shouldn't it be POST?
+    body: JSON.stringify({connectionId}) 
+  })
+}
 
 export default function ServerRep({ serverDetails } : {serverDetails: ServerDetails}) {
   const dispatch = useDispatch()
+  const [serverObjs, setServerObjs] = useState<{roles: string[], dbs: string[]}>({roles: [], dbs: []})
+  const [objectsFetchState, setObjectsfetchState] = useState("")
+  const [serverObjsVisible, setServerObjsVisible] = useState(false)
 
-  function connectToDb() {
-    if (!serverDetails.fetchedObjs){
-      dispatch(tabCreated(getNewDashboardTabObj(serverDetails.config, serverDetails.initDb)))
-      dispatch(getServerObjects({serverName: serverDetails.name, config: {...serverDetails.config, database: serverDetails.initDb}}))
+  useEffect(() => {
+    if (serverDetails.connectedDbs.length === 1 && !objectsFetchState) { // from the login interface
+      setObjectsfetchState("pending")
+      getServerData()
+    }
+  }, [])
+
+  async function getServerData() {
+    let {connectedDbs, ...payload} = serverDetails
+    const response = await connectDb(payload, false)
+    if (!response) {
+      alert("Internet connection Error: Check your internet connection and if the database is reachable")
+      return;
+    }
+    const resBody = await response.json()
+    if (!response.ok) {
+      alert(`Error ${response.status}: ${resBody.errorMsg}`)
+      setObjectsfetchState("")
+      return;
+    }
+
+    connectedDbs = [resBody.data]
+    
+    const serverObjsReqRes = await getServerObjects(connectedDbs[0].connectionId)
+    const responseBody = await serverObjsReqRes.json()
+    if (responseBody.errorMsg) {
+      setObjectsfetchState("")
+      alert(responseBody.errorMsg)
+    }else {
+      setServerObjs({roles: responseBody.data.roles, dbs: responseBody.data.databases})
+      setObjectsfetchState("complete")
+      dispatch(addNewConnectedDb({serverName: serverDetails.name, dbDetails: connectedDbs[0]}))
+      dispatch(tabCreated(getNewDashboardTabObj(connectedDbs[0].connectionId)))
     }
   }
 
-  function openNewConsole() {
-    dispatch(tabCreated({
-      tabName: "SQL-Console",
-      tabType: "SQL-Console",
-      dataDetails: {
-        dbName: serverDetails.initDb,
-        tableName: "",
-        schemaName: "",
-        serverConfig: serverDetails.config
-      }
-    }))
+  function toggleServerObjsVisibility() {
+    if (!objectsFetchState) {
+      setObjectsfetchState("pending")
+      getServerData()
+    }
+    setServerObjsVisible(!serverObjsVisible)
   }
   
   return (
     <li id="cluster-lvl-objs">
-      <button onClick={connectToDb}>{serverDetails.name}</button>
-      {serverDetails.fetchedObjs && (
-        <ServerDetailsContext.Provider value={serverDetails}>
-          <button onClick={openNewConsole} type="button">SQL console</button>
-          <Roles dbClusterRoles={serverDetails.roles} />
-          <DataBases clusterDbs={serverDetails.databases} />
-        </ServerDetailsContext.Provider>
-      )}
+      <button onClick={toggleServerObjsVisibility}>{serverDetails.name}</button>
+      {serverObjsVisible && <>
+        {objectsFetchState === "pending" && "Loading..."}
+        {objectsFetchState === "complete" && (
+          <ServerDetailsContext.Provider value={serverDetails}>
+            <Roles dbClusterRoles={serverObjs.roles} />
+            <DataBases clusterDbs={serverObjs.dbs} />
+          </ServerDetailsContext.Provider>
+        )}
+      </>}
     </li>
   )
 }
