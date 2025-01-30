@@ -57,11 +57,17 @@
         position: relative;
       }
 
-      .form-section {
+      .block {
         display: block;
-        width: 100%;
-        position: absolute;
+        font-weight: 500;
+      }
 
+      .inline {
+        display: flex;
+      }
+
+      .mt-10 {
+        margin-top: 10px;
       }
 
 
@@ -209,6 +215,28 @@
         background-color: rgb(245, 245, 245);
         height: 50vh;
       }
+
+      .hide {
+        z-index: 1; 
+      }
+      .show {
+        z-index: 5;
+        height: 100vh;
+      }
+
+      #form-sections-container {
+        display: flex;
+        position: relative;
+      }
+
+      .form-section {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background-color: white;
+      }
+
     </style>
   </head>
   <body>
