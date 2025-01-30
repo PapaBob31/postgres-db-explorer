@@ -1,193 +1,159 @@
 import { useRef, useState } from "react"
-import { addNewServer, tabCreated, getServerObjects } from "../store"
+import { addNewServer, tabCreated,
+		 type ConnectionParams, type ServerDetails, type ConnectedDbDetails} from "../store"
 import { useDispatch } from "react-redux"
 import { parse } from "pg-connection-string"
 import { generateUniqueId } from "../main"
+import { useForm, SubmitHandler } from "react-hook-form"
 
 
-export interface ConnectionParams {
-	name: string,
-	user: string;
-	password: string;
-	host: string;
-	database: string;
-	port: number;
-	saveConnDetails: boolean;
-	ssl: boolean;
+export interface ConnectionReqPayload {
+	name: string;
 	isConnUri: boolean;
 	connectionUri: string;
+	connectionParams: ConnectionParams;
 }
 
-async function connectDb(params: ConnectionParams) {
+export async function connectDb(reqBody: ConnectionReqPayload, saveDetails: boolean) {
 
 	const serverReq = new Request("http://localhost:4900/connect-db", {
 		credentials: "include",
 		headers: {"Content-Type": "application/json"},
 		method: "POST",
-		body: JSON.stringify({...params})
+		body: JSON.stringify({...reqBody, saveConnDetails: saveDetails})
 	})
 
 	let response;
 	try {
 		response = await fetch(serverReq)
 	}catch(error) {
-		alert("Internet connection Error: Check your internet connection and if the database is reachable")
 		return null
 	}
 	return response
 }
 
-function serializeForm(elem: Element) : ConnectionParams {
-	let urlParamsObj = Object();
-	const inputElements = elem.querySelectorAll("input");
-
-	for (let element of inputElements) {
-		if (element.name === "ssl" || element.name === "saveConnDetails")
-			urlParamsObj[element.name] = element.checked;
-		else
-			urlParamsObj[element.name] = element.value.trim();
-	}
-	return urlParamsObj
-}
-
-
-function genDashBoardStatePayload(obj: ConnectionParams, serverConfig: any) {
-	return  {
-	    tabName: "dashboard",
-	    tabType: "dashboard",
-	    tabId: generateUniqueId(),
-	    dataDetails: {
-	      dbName: obj.database,
-	      tableName: "",
-	      schemaName: "",
-	      serverConfig
-	    }
-	}
-}
-
-
-export function getServerConfig(connectionParams: any) {
-	const config = Object()
-	const restricted = ["name", "isConnUri", "connectionUri", "saveConnDetails", "database"]
-
-	for (let key in connectionParams) {
-		if (!restricted.includes(key)) {
-			config[key] = connectionParams[key]
-		}
-	}
-
-	return config;
+interface URIFormData {
+	name: string;
+	connectionUri: string;
 }
 
 function ConnectionURIForm() {
 	const formRef = useRef<HTMLFormElement|null>(null)
 	const dispatch = useDispatch();
+	const saveConnDetails = useRef<HTMLInputElement|null>(null)
+	const { handleSubmit, register } = useForm<URIFormData>()
 
-	async function connect(event: React.FormEvent) {
-		event.preventDefault()
-		let params = serializeForm(formRef.current as HTMLFormElement)
-		params.isConnUri = true;
-		
-		try {
-			params = {...parse(params.connectionUri), ...params}
-		}catch(err) {
-			alert("Invaid connection URI")
+	const connect: SubmitHandler<URIFormData> = async (formData) => {
+		const connectionParams = parse(formData.connectionUri)
+		const connectionReqPayload = {...formData, connectionParams, isConnUri: true}
+		const response = await connectDb(connectionReqPayload, saveConnDetails.current!.checked);
+		if (!response || !response.ok) {
+			alert("Something went wrong! Check your connection parameters and try again")
 			return;
 		}
 
-		const response = await connectDb(params);
-		if (!response) return;
+		const connectedDbDetails = await response.json() as ConnectedDbDetails
 
-		
-		if (response.ok) {
-			const serverConfig = getServerConfig(params)
-			const newTabPayload = genDashBoardStatePayload(params, serverConfig)
-			dispatch(tabCreated(newTabPayload))
-			dispatch(addNewServer({
-				name: params.name,
-				isConnUri: true,
-				connectionUri: params.connectionUri,
-				config: serverConfig,
-				fetchedObjs: false,
-				initDb: params.database,
-				connectedDbs: [],
-				roles: [],
-  				databases: []
-			}))
-			dispatch(getServerObjects({serverName: params.name, config: {...serverConfig, database: params.database}}))
-		}else {
-			alert("Invalid connection string")
+		const newTabPayload =  {
+		    tabName: "dashboard",
+		    tabType: "dashboard",
+		    tabId: generateUniqueId(),
+		    dataDetails: {
+		      dbConnectionId: connectedDbDetails.connectionId as string,
+		      tableName: "",
+		      schemaName: "",
+		    }
 		}
+		dispatch(tabCreated(newTabPayload))
+		const connectedServer: ServerDetails = {...connectionReqPayload, connectedDbs: []}
+		connectedServer.connectedDbs.push(connectedDbDetails)
+		dispatch(addNewServer(connectedServer))
 	}
+	
 	return (
-		<form ref={formRef} onSubmit={connect}>
+		<form ref={formRef} onSubmit={handleSubmit(connect)}>
 			<h1>Connection URI</h1>
 			<label>Server Name</label>
-			<input type="text" name="name" maxLength={50} required/>
+			<input type="text" {...register("name", {maxLength: 50, required: true})}/>
 			<label>URI</label>
-			<input type="text" name="connectionUri" required/>
+			<input type="text" {...register("connectionUri")}/>
 			<label>
 				<span>Save connection details </span>
 				<button title="save connnection details for easier connection next time">info</button>
 			</label>
-			<input type="checkbox" name="saveConnDetails" />
+			<input type="checkbox" name="saveConnDetails" ref={saveConnDetails}/>
 			<button type="submit">Connect</button>
 		</form>
 	)
 }
 
+interface FormData {
+	name: string,
+	user: string;
+	password: string;
+	host: string;
+	database: string;
+	port: number;
+	ssl: boolean|string;
+}
+
 function ConnectionFieldsForm() {
-	const formRef = useRef<HTMLFormElement|null>(null)
+	const saveConnDetails = useRef<HTMLInputElement|null>(null)
 	const dispatch = useDispatch();
+	const { handleSubmit, register } = useForm<FormData>()
 
-	async function connect(event: React.FormEvent) {
-		event.preventDefault()
-		let params = serializeForm(formRef.current as HTMLFormElement)
-		const response = await connectDb(params);
-		if (!response) return;
-
-		if (response.ok) {
-			const serverConfig = getServerConfig(params)
-			const newTabPayload = genDashBoardStatePayload(params, serverConfig)
-			dispatch(tabCreated(newTabPayload))
-			dispatch(addNewServer({
-				name: params.name,
-				isConnUri: true,
-				connectionUri: params.connectionUri,
-				config: serverConfig,
-				fetchedObjs: false,
-				initDb: params.database,
-				connectedDbs: [],
-				roles: [],
-  				databases: []
-			}))
-			dispatch(getServerObjects({serverName: params.name, config: {...serverConfig, database: params.database}}))
-		}else {
-			alert("Invalid connection string")
+	const connect: SubmitHandler<FormData> = async (formData) => {
+		console.log(formData)
+		const {name, ...connectionParams} = formData;
+		// connectionParams.ssl = connectionParams.ssl ? "require" : "disable"
+		// console.log(formData, connectionParams)
+		const connectionReqPayload = {name, connectionParams, isConnUri: false, connectionUri: ""}
+		const response = await connectDb(connectionReqPayload, saveConnDetails.current!.checked);
+		if (!response || !response.ok) {
+			alert("Something went wrong! Check your connection parameters and try again")
+			return;
 		}
+
+		const connectedDbDetails = await response.json() as ConnectedDbDetails
+
+		const newTabPayload =  {
+		    tabName: "dashboard",
+		    tabType: "dashboard",
+		    tabId: generateUniqueId(),
+		    dataDetails: {
+		      dbConnectionId: connectedDbDetails.connectionId as string,
+		      tableName: "",
+		      schemaName: "",
+		    }
+		}
+		dispatch(tabCreated(newTabPayload))
+		const connectedServer: ServerDetails = {...connectionReqPayload, connectedDbs: []}
+		connectedServer.connectedDbs.push(connectedDbDetails)
+		dispatch(addNewServer(connectedServer))
 	}
+
 	return (
-		<form id="server-connect-form" ref={formRef} onSubmit={connect}>
+		<form id="server-connect-form" onSubmit={handleSubmit(connect)}>
 			<h1>Connection parameters</h1>
 			<label>Server Name</label>
-			<input type="text" name="name" maxLength={50} required/>
+			<input type="text" {...register("name", {maxLength: 50, required: true})}/>
 			<label>User</label>
-			<input type="text" name="user"/>
+			<input type="text" {...register("user")}/>
 			<label>Password</label>
-			<input type="password" name="password"/>
+			<input type="password" {...register("password")}/> 
 			<label>Host name (<em>not ip addr</em>)</label>
-			<input type="text" name="host"/>
+			<input type="text" {...register("host")}/> 
 			<label>Port number</label>
-			<input type="number" name="port" min="1024" max="65535"/>
+			<input type="number" {...register("port", {min: 1024, max: 65535})}/> 
 			<label>Db name</label>
-			<input type="text" name="database"/>
+			<input type="text" {...register("database")}/> 
 			<label>SSL</label>
-			<input type="checkbox" name="ssl"/>
+			<input type="checkbox" {...register("ssl")}/>
 			<label>
 				<span>Save connection details </span>
 				<button title="save connnection details for easier connection next time">info</button>
 			</label>
-			<input type="checkbox" name="saveConnDetails" />
+			<input type="checkbox" name="saveConnDetails" ref={saveConnDetails}/>
 			<button type="submit">Connect</button>
 		</form>
 	)
