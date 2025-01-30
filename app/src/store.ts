@@ -1,35 +1,54 @@
 import { configureStore, createSlice, createAsyncThunk } from "@reduxjs/toolkit"
-import { getServerConfig, type ConnectionParams } from "./routes/dbConnect"
 
-export interface ServerDetails {
-	name: string,
-  	isConnUri: boolean,
-	connectionUri: string,
-	config: any,
-	initDb: string;
-	fetchedObjs: boolean;
-  	connectedDbs: string[];
-  	roles: string[];
-  	databases: string[]
+export interface ConnectedDbDetails {
+	connectionId: string;
+	name: string;
+}
+
+export interface ConnectionParams {
+	user?: string;
+	password?: string;
+	host?: string;
+	port?: number;
+	ssl?: string;
+	database?: string;
+}
+
+interface SavedServerDetails {
+	name: string;
+	isConnUri: boolean;
+	connectionUri: string;
+	connectionParams: ConnectionParams;
+}
+
+export interface ServerDetails extends SavedServerDetails{
+	name: string;
+	isConnUri: boolean;
+	connectionUri: string;
+	connectionParams: ConnectionParams;
+	connectedDbs: ConnectedDbDetails[];
 }
 
 
-const serversDetails: {fetchedSavedServers: boolean; data: ServerDetails[]} = {
+const serversDetails: {fetchedSavedServers: boolean, data: ServerDetails[]} = {
 	fetchedSavedServers: false,
 	data: []
 }
 
-export interface OpenedTabDetail {
+interface TabDetailWithoutId {
 	tabName: string;
-	tabId: string;
 	tabType: string;
 	dataDetails: {
-		dbName: string;
+		dbConnectionId: string;
 		tableName: string;
 		schemaName: string;
-		serverConfig: any
 	}
 }
+
+export interface OpenedTabDetail extends TabDetailWithoutId {
+	tabId: string;
+}
+
 
 interface Tabs {
 	currentTab: OpenedTabDetail|null,
@@ -54,16 +73,7 @@ const tabs: Tabs = {
 
 interface Action {
 	type: string;
-	payload: {
-		tabName: string;
-		tabType: string;
-		dataDetails: {
-			dbName: string;
-			tableName: string;
-			schemaName: string;
-			serverConfig: any
-		}
-	}
+	payload: TabDetailWithoutId
 }
 
 const tabsSlice = createSlice({
@@ -92,7 +102,7 @@ const tabsSlice = createSlice({
 		},
 		tabChangedInPlace(state, action: Action) {
 			let replacedTabIndex = state.openedTabs.findIndex((tab) => tab.tabId === state.currentTab!.tabId);
-			state.openedTabs[replacedTabIndex] = {tabId: state.currentTab!.tabId, ...action.payload} // currentTab is also the tab to be replaced
+			state.openedTabs[replacedTabIndex] = {...action.payload, tabId: state.currentTab!.tabId} // currentTab is also the tab to be replaced
 			state.currentTab = state.openedTabs[replacedTabIndex]
 		}
 	}
@@ -103,30 +113,22 @@ export const fetchSavedServers = createAsyncThunk("servers/loadSavedServers", as
 	const response = await fetch("http://localhost:4900/saved-servers");
 	let serverData;
 	if (response.ok)
-		serverData = await response.json() as ConnectionParams[]
+		serverData = await response.json() as SavedServerDetails[]
 
 	if (!serverData)
 		return []
 
 	return serverData.map((data) => {
-        return {
-          	name: data.name,
-          	isConnUri: data.isConnUri,
-  			connectionUri: data.connectionUri,
-  			config: getServerConfig(data),
-  			fetchedObjs: false,
-  			initDb: data.database,
-          	connectedDbs: [] as string[]
-     	} as ServerDetails;
-  	})
+    return {...data, connectedDbs: []} as ServerDetails
+	})
 })
 
-export const getServerObjects = createAsyncThunk("servers/getServerObjects", async (details: {serverName: string, config: any}) => {
+/*export const getServerObjects = createAsyncThunk("servers/getServerObjects", async (arg: {serverDetails: ServerDetails, connectedDbDetails: ConnectedDbDetails}) => {
 	const response = await fetch("http://localhost:4900", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST",
-      body: JSON.stringify({config: details.config}) 
+      body: JSON.stringify({connectionId: arg.connectedDbDetails.connectionId}) 
     })
 
     if (!response.ok)
@@ -134,14 +136,20 @@ export const getServerObjects = createAsyncThunk("servers/getServerObjects", asy
 
     const responseBody = await response.json()
 	return {serverName: details.serverName, serverObjects: responseBody.data as {roles: string[], databases: string[]}};
-})
+})*/
 
-interface ServerObjectsPayload {
-	serverName: string,
-	serverObjects: {
-		roles: string[],
-		databases: string[]
+function moveConnectedServersUp(data: ServerDetails[]) { // could this algorithnm be better?
+	const connected : ServerDetails[]= []
+	const unconnected: ServerDetails[] = []
+	for (let serverDetails of data) {
+		if (serverDetails.connectedDbs.length > 0) {
+			connected.push(serverDetails)
+		}else {
+			unconnected.push(serverDetails)
+		}
 	}
+
+	return  [...connected, ...unconnected]
 }
 
 const serverSlice =  createSlice({
@@ -149,38 +157,25 @@ const serverSlice =  createSlice({
 	initialState: serversDetails,
 	reducers: {
 		addNewServer(state, action: {type: string, payload: ServerDetails}) {
-
-			// sort it first putting connected on top
-			const tempArray:ServerDetails[] = state.data.splice(0, state.data.length);
-			tempArray.forEach(data => data.fetchedObjs && state.data.push(data))
-			state.data.push(action.payload);
-
-			tempArray.forEach(data => !data.fetchedObjs && state.data.push(data))
+			state.data.push(action.payload)
+			state.data = moveConnectedServersUp(state.data)
 		},
-		newDbConnected(state, action) {
-
-		}
+		addNewConnectedDb(state, action: {type: string, payload: {serverName: string, dbDetails: ConnectedDbDetails}}) {
+			const targetServer = state.data.find((data) => data.name === action.payload.serverName)
+			if (targetServer) {
+				targetServer.connectedDbs.push(action.payload.dbDetails)
+			}// else nothing. 'else' case should be impossible
+			state.data = moveConnectedServersUp(state.data)
+		},
 	},
 	extraReducers(builder) {
-		builder.addCase(fetchSavedServers.fulfilled, (state, action: {type: string, payload: ServerDetails[]}) => {
-			state.fetchedSavedServers = true
+		builder
+		.addCase(fetchSavedServers.fulfilled, (state, action: {type: string, payload: ServerDetails[]}) => {
+			state.fetchedSavedServers = true;
 			state.data = action.payload // pushing instead of assigning directly causes a bug.
 		})
-
 		.addCase(fetchSavedServers.rejected, (state) => {
 			state.data = [];
-		})
-		.addCase(getServerObjects.fulfilled, (state, action: {type: string, payload: ServerObjectsPayload} ) => {
-			for (let server of state.data) {
-				if (server.name === action.payload.serverName) {
-					server.fetchedObjs = true
-					server.roles = action.payload.serverObjects.roles
-					server.databases = action.payload.serverObjects.databases
-				}
-			}
-		})
-		.addCase(getServerObjects.rejected, (state, action ) => {
-			
 		})
 	}
 })
@@ -194,13 +189,13 @@ const store = configureStore({
 
 export default store;
 export const { tabCreated, tabClosed, tabSwitched, tabChangedInPlace } = tabsSlice.actions
-export const { addNewServer } = serverSlice.actions;
+export const { addNewServer, addNewConnectedDb } = serverSlice.actions;
 
 export const selectTabs = (state: ReturnType<typeof store.getState>) => state.tabs
 export const selectCurrentTab = (state: ReturnType<typeof store.getState>) => state.tabs.currentTab as OpenedTabDetail;
 export const selectServers = (state: ReturnType<typeof store.getState>) => state.servers.data
 export const selectServersFetchStatus = (state: ReturnType<typeof store.getState>) => state.servers.fetchedSavedServers
-export const selectCurrentTabServerConfig = (state: ReturnType<typeof store.getState>) => {
+/*export const selectCurrentTabServerConfig = (state: ReturnType<typeof store.getState>) => {
 	const tabDetails = state.tabs.currentTab as OpenedTabDetail;
-  	return {...tabDetails.dataDetails.serverConfig, database: tabDetails.dataDetails.dbName}
-}
+  return {...tabDetails.dataDetails.serverConfig, database: tabDetails.dataDetails.dbName}
+}*/
