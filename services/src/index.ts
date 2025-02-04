@@ -268,5 +268,25 @@ app.post("/get-db-schemas", async (req, res) => {
 	}
 })
 
+
+app.post("/get-role-details", async(req, res) => {
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(`SELECT * FROM pg_roles WHERE rolname = '${req.body.roleName}';`, pool)
+	console.log(req.body.roleName)
+	if (queryResult.errorMsg) {
+		res.status(400).json(queryResult)
+	}else if (queryResult.data.rows.length === 0) {
+		res.status(404).json({msg: null, errorMsg: "role doesn't exist", data: null})
+	}else {
+		if (queryResult.data.rows[0].rolsuper) {
+			const rolePasswordQuery = await processReq(`SELECT rolpassword FROM pg_authid WHERE rolname = ${req.body.roleName};`, pool)
+			if (rolePasswordQuery.data?.rows?.length) {
+				queryResult.data.rows[0].rolpassword = rolePasswordQuery.data.rows[0].rolpassword
+			}
+		}
+		res.status(200).json({errorMsg: null, data: queryResult.data.rows[0], msg: null})
+	}
+
+})
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)
