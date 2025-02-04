@@ -306,13 +306,32 @@ export function DataBases({clusterDbs}:{clusterDbs: string[]}) {
   )
 }
 
-export function Roles({dbClusterRoles} : {dbClusterRoles: string[]}) {
-  const listItems = dbClusterRoles.map(roleName => <li key={roleName}><button>{roleName}</button></li>)
+
+export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: string[], anydbConnectionId: string}) {
+  const dispatch = useDispatch()
+
+  function showRoleDetails(roleName: string) {
+    const roleTabDetails = {
+      tabName: `Role - ${roleName}`,
+      tabType: "roleDetails",
+      dataDetails: {
+        dbConnectionId: anydbConnectionId,
+        tableName: roleName,
+        schemaName: "",
+      }
+    }
+    dispatch(tabCreated(roleTabDetails))
+  }
+
   return (
     <section id="cluster-roles">
       <h2>Roles</h2>
+      <button>Create role</button>
       <ul>
-        {listItems}
+        {dbClusterRoles.map(roleName => (
+          <li key={roleName}>
+            <button onClick={() => showRoleDetails(roleName)}>{roleName}</button> {/*set width to full when using tailwind to handle proper clicks*/}
+          </li>))}
       </ul>
     </section>
     
@@ -339,7 +358,8 @@ function getServerObjects(connectionId: string) {
     body: JSON.stringify({connectionId}) 
   })
 }
-
+// todo: implement keeping track of open tabs related to a server/db so that disconnecting
+// from the db or tab will not render such tabs usesless
 export default function ServerRep({ serverDetails } : {serverDetails: ServerDetails}) {
   const dispatch = useDispatch()
   const [serverObjs, setServerObjs] = useState<{roles: string[], dbs: string[]}>({roles: [], dbs: []})
@@ -397,7 +417,7 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
         {objectsFetchState === "pending" && "Loading..."}
         {objectsFetchState === "complete" && (
           <ServerDetailsContext.Provider value={serverDetails}>
-            <Roles dbClusterRoles={serverObjs.roles} />
+            <Roles dbClusterRoles={serverObjs.roles} anydbConnectionId={serverDetails.connectedDbs[0].connectionId} />
             <DataBases clusterDbs={serverObjs.dbs} />
           </ServerDetailsContext.Provider>
         )}

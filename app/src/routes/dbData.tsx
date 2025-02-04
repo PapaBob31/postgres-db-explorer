@@ -430,24 +430,6 @@ interface DbDetails {
   currentConnections: ConnectionDetail[]
 }
 
-/*
-Roles
-  Rolen - grant and revoke privileges
-installed languages
-Databses - space usage
-
-  DataBasn
-    schenma_n
-      tables
-      views
-      foreign data wappers
-      foreign tables
-      materialised views
-      functions
-      sequences
-
-*/
-
 
 export function DashBoard() {
   return  (
@@ -490,6 +472,7 @@ function DbDetails() {
     <section>
       {loading ? <strong><i>Loading...</i></strong> : <>
         <h1>Db details</h1><span>Connected {/* show only if connected*/}</span>
+        <h1>Db Name has to sho or something</h1>
         <p><strong>template?</strong></p>
         <p><strong>encoding: </strong>{}</p>
         <p><strong>No of allowed connections: </strong>{}</p>
@@ -501,28 +484,65 @@ function DbDetails() {
   )
 }
 
-function RoleDetails({roleName} : {roleName: string}) {
-  // const [roleDetails, setRoleDetails] = useState<any>({})
+export function RoleDetails() {
+  const roleTabDetails = useSelector(selectCurrentTab).dataDetails
+  const [roleDetails, setRoleDetails] = useState<any>(null)
+
+  useEffect(() => {
+    fetch("http://localhost:4900/get-role-details", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST", // shouldn't it be POST?
+      body: JSON.stringify({connectionId: roleTabDetails.dbConnectionId, roleName: roleTabDetails.tableName}) // we store it rolname in tableName for convenience
+    })
+    .then(response => {
+      if (response.ok || response.headers.get("content-type")?.startsWith("application/json"))  {
+        return response.json()
+      }else return null
+    })
+    .then(responseBody => {
+      if (!responseBody) {
+        alert("Internal server Error")
+      }else if (!responseBody.errorMsg) {
+        setRoleDetails(responseBody.data)
+      }else alert(responseBody.errorMsg)
+    })
+    .catch(err => {
+      console.log(err);
+      alert("Somethin went wrong! Check your internet connection and try again.")
+    })
+  }, [])
+
   return (
     <section>
-      <h1>{roleName}</h1>
-       <div>SuperUser?</div>
-       <div>Logged in?</div>
-       <section>
-         <h2>Privileges</h2>
-         <div>Privilege 1 <button>revoke</button></div>
-         <button>Grant privilege</button>
-       </section>
-       <section>
-         <h2>Objects Owned</h2>
-         <i>To implement maybe...</i>
-       </section>
-      <button disabled>DROP ROLE</button>
-      <button>DROP OWNED</button>
-    </section>)
+      {roleDetails ? <>
+        <h1>{roleDetails.tableName}</h1>
+        <p>rolname <input type="text" readOnly value={roleDetails.rolname}/></p>
+        <p>rolsuper <input type="checkbox" readOnly checked={roleDetails.rolsuper}/></p>
+        <p>rolinherit <input type="checkbox" readOnly checked={roleDetails.rolinherit}/></p>
+        <p>rolcreaterole <input type="checkbox" readOnly checked={roleDetails.createrole}/></p>
+        <p>rolcreatedb <input type="checkbox" readOnly checked={roleDetails.createdb}/></p>
+        <p>rolcanlogin <input type="checkbox" readOnly checked={roleDetails.rolcanlogin}/></p>
+        <p>rolreplication <input type="checkbox" readOnly checked={roleDetails.rolreplication}/></p>
+        <p>rolbypassrls <input type="checkbox" readOnly checked={roleDetails}/></p>
+        <p>rolconnlimit  <input type="text" readOnly value={roleDetails.rolconnlimit}/></p>
+        <p>rolvaliduntil <input type="checkbox" readOnly checked={roleDetails.rolvaliduntil}/></p>
+        {roleDetails.rolpassword && <p>rolpassword <input type="checkbox" readOnly checked={roleDetails.rolpassword}/></p>}
+        <section>
+          <h2>Privileges</h2>
+          <div>Privilege 1 <button>revoke</button></div>
+          <button>Grant privilege</button>
+        </section>
+        <section>
+          <h2>Objects Owned</h2>
+          <i>To implement maybe...</i>
+         </section>
+        <button disabled>DROP ROLE</button>
+        <button>DROP OWNED</button>
+      </> : <p><b>Loading...</b></p>}
+    </section>
+  )
 }
-
-
 
 interface TableDetails {
   tableName: string;

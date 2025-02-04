@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { TableRowsDisplay, NewTypeForm, DashBoard } from "./dbData"
+import { TableRowsDisplay, NewTypeForm, DashBoard, RoleDetails } from "./dbData"
 import { CreateTable } from "./newTableForm";
 import { useSelector, useDispatch } from "react-redux"
 // import { ServerDetailsContext, generateUniqueId } from "../main"
@@ -234,7 +234,8 @@ const stateDisplayMap: {[key: string]: JSX.Element} = {
   "table-rows-data": <TableInfo currentDisplay="Table Rows"/>,
   "table-columns-data": <TableInfo currentDisplay="Table Columns"/>,
   "insert-form": <InsertForm />,
-  "SQL-Console": <SQLConsole/>
+  "SQL-Console": <SQLConsole/>,
+  "roleDetails": <RoleDetails/>
 }
 
 function TabBtn( { tabDetail } : {tabDetail: OpenedTabDetail}) {
@@ -288,8 +289,22 @@ export default function DbDataDisplay() {
 
 
 /*
-  create role, set role privieges, group role, drop role
+  create role, set role privieges, group role, drop role, REASSIGN_OWNED, DROP_OWNED
+  (For maximum security, issue the REVOKE in the same transaction that creates the object; then there is no window in which another user can use the object.)
+  Database roles are global across a database cluster installation (and not per individual database).
+  switching connected roles
 
+  roles can be created with privileges
+  roles can be user roles or group roles
+  inherit, noinherit
+  The role attributes LOGIN, SUPERUSER, CREATEDB, and CREATEROLE can be thought of as special privileges, 
+  but they are never inherited as ordinary privileges on database objects are.
+  change session default variables
+
+  FUNCTIONALITY to manage databases
+  PostgreSQL server provides a large number of run-time configuration variables. You can set database-specific default values for many of these settings.
+  drop database
+  dashboard should show disk size?
   ALWAYS REMEMBER THAT THE GOAL IS TO MAKE IT WAY EASIER THAN TYPING THE COMMANDS MANUALLY
   try and reduce the number of clicks needed to at most 3 before getting to use any ui features
   Change data fetching mechanism to tan stack query or react query
@@ -300,4 +315,7 @@ export default function DbDataDisplay() {
   quoted identifier
   Implement measures and checks for data that has already been edited in the db but the old value is still being displayed here
   when writing the insert interface, try and check data types like character varying for correctness before sending it off to the server
+
+   Foreign data wrappers (see postgres_fdw) allow for objects within one database to act as proxies for objects in other database or clusters.
+   The older dblink module (see dblink) provides a similar capability.
 */
