@@ -286,7 +286,41 @@ app.post("/get-role-details", async(req, res) => {
 		}
 		res.status(200).json({errorMsg: null, data: queryResult.data.rows[0], msg: null})
 	}
+})
 
+app.post("/db-size", async (req, res) => {
+	if (!req.body.dbName) {
+		res.status(400).json({msg: null, errorMsg: "Invalid Request parameter! Missing 'dbName' field", data: null})
+		return
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(`SELECT pg_size_pretty(pg_database_size('${req.body.dbName}'))`, pool)
+	if (queryResult.errorMsg)
+		res.status(400).json(queryResult)
+	else res.status(200).json({errorMsg: null, data: queryResult.data.rows[0].pg_size_pretty, msg: null})
+})
+
+app.post("/db-details", async (req, res) => {
+	if (!req.body.dbName) {
+		res.status(400).json({msg: null, errorMsg: "Invalid Request parameter! Missing 'dbName' field", data: null})
+		return
+	}
+
+	const pool = poolMap[req.body.connectionId]
+	const activeSessionsQuery = `SELECT usename, application_name, client_hostname, client_port, state FROM pg_stat_activity WHERE datname = '${req.body.dbName}'`
+	const queryResults = await processReq(`SELECT session_user; SELECT current_database(); SHOW max_connections; SELECT current_schema; ${activeSessionsQuery}`, pool)
+	if (queryResults.errorMsg) {
+		res.status(500).json({errorMsg: "Internal Server Error! Something went wrong", data: null, msg: null})
+		return
+	}
+	const payload = {sessionUser: "", currentDatabase: "", maxConnections: "", currentSchema: "", currentSessions: {} as any}
+	payload.sessionUser = queryResults.data[0].rows[0].session_user
+	payload.currentDatabase = queryResults.data[1].rows[0].current_database
+	payload.maxConnections = queryResults.data[2].rows[0].max_connections
+	payload.currentSchema = queryResults.data[3].rows[0].current_schema
+	payload.currentSessions = queryResults.data[4].rows
+	console.log(queryResults.data[4].rows)
+	res.status(200).json({msg: "success!", errorMsg: null, data: payload})
 })
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)

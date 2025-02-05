@@ -340,8 +340,8 @@ export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: str
 
 function getNewDashboardTabObj(dbConnectionId: string) {
   return {
-    tabName: "dashboard",
-    tabType: "dashboard",
+    tabName: "Db details",
+    tabType: "db-details",
     dataDetails: {
       dbConnectionId,
       tableName: "",

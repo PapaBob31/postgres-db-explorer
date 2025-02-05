@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { TableRowsDisplay, NewTypeForm, DashBoard, RoleDetails } from "./dbData"
+import { TableRowsDisplay, NewTypeForm, DbDetails, RoleDetails } from "./dbData"
 import { CreateTable } from "./newTableForm";
 import { useSelector, useDispatch } from "react-redux"
 // import { ServerDetailsContext, generateUniqueId } from "../main"
@@ -227,7 +227,7 @@ function TableInfo({ currentDisplay } : {currentDisplay: string}) {
 
 // todo: find a way to limit the possible key types
 const stateDisplayMap: {[key: string]: JSX.Element} = {
-  "dashboard": <DashBoard/>,
+  "db-details": <DbDetails/>,
   "new-type-form": <NewTypeForm/>,
   "create-table-form": <CreateTable />,
   "table-info": <TableInfo currentDisplay="root" />,
@@ -304,7 +304,6 @@ export default function DbDataDisplay() {
   FUNCTIONALITY to manage databases
   PostgreSQL server provides a large number of run-time configuration variables. You can set database-specific default values for many of these settings.
   drop database
-  dashboard should show disk size?
   ALWAYS REMEMBER THAT THE GOAL IS TO MAKE IT WAY EASIER THAN TYPING THE COMMANDS MANUALLY
   try and reduce the number of clicks needed to at most 3 before getting to use any ui features
   Change data fetching mechanism to tan stack query or react query

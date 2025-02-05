@@ -55,8 +55,8 @@ function ConnectionURIForm() {
 		const connectedDbDetails = await response.json() as ConnectedDbDetails
 
 		const newTabPayload =  {
-		    tabName: "dashboard",
-		    tabType: "dashboard",
+		    tabName: "Db details",
+		    tabType: "db-details",
 		    tabId: generateUniqueId(),
 		    dataDetails: {
 		      dbConnectionId: connectedDbDetails.connectionId as string,
@@ -117,8 +117,8 @@ function ConnectionFieldsForm() {
 		const connectedDbDetails = await response.json() as ConnectedDbDetails
 
 		const newTabPayload =  {
-		    tabName: "dashboard",
-		    tabType: "dashboard",
+		    tabName: "Db Details",
+		    tabType: "db-details",
 		    tabId: generateUniqueId(),
 		    dataDetails: {
 		      dbConnectionId: connectedDbDetails.connectionId as string,

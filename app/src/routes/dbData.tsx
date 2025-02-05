@@ -406,80 +406,118 @@ interface GenericQueryData {
 }
 
 
-function Header({username, connectedDb} : {username: string, connectedDb: string}) {
-  return (
-    <header>
-     <b>Logged in user: </b>{username}
-     <b> Connected database: </b>{connectedDb}
-    </header>
-  )
-}
-
 interface ConnectionDetail {
-  user: string;
+  usename: string;
   application_name: string;
   state: string;
   client_hostname: string;
   client_port: number
 }
 
-interface DbDetails {
-  template: boolean;
-  encoding: string;
-  allowedConnectionsNum: number;
-  currentConnections: ConnectionDetail[]
+function CurrentSessions({sessionData} : {sessionData: ConnectionDetail[]}) {
+  return (<>
+    <h2>Current Sessions</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>user</th>
+          <th>application name</th>
+          <th>client_hostname</th>
+          <th>client_port</th>
+          <th>state</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sessionData.map(data => <tr>
+          <td>{data.usename}</td>
+          <td>{data.application_name}</td>
+          <td>{data.state}</td>
+          <td>{data.client_hostname}</td> {/*Handle null values later*/}
+          <td>{data.client_port}</td>
+        </tr>)}
+      </tbody>{/*Implement button that closes each displayed connection*/}
+    </table>
+  </>)
+}
+
+interface DbSessionDetails {
+  sessionUser: string;
+  currentDatabase: string;// we should know this already
+  maxConnections: number;
+  currentSchema: string;
+  currentSessions: ConnectionDetail[]
 }
 
 
-export function DashBoard() {
+export function DbDetails() {
+
+  const { dbConnectionId } = useSelector(selectCurrentTab).dataDetails
+  const [dbDetails, setDbDetails] = useState<DbSessionDetails|null>(null)
+  const [dataFetched, setDataFetched] = useState(false)
+  const [dbSize, setDbSize] = useState<string|null>(null)
+
+  useEffect(() => {
+    if (dataFetched)
+      return
+    fetch("http://localhost:4900/db-details", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST", // shouldn't it be POST?
+      body: JSON.stringify({connectionId: dbConnectionId, dbName: 'postgres'})
+    })
+    .then(response => {
+      if (response.ok || response.headers.get("content-type")?.startsWith("application/json")) {
+        return response.json()
+      }else {
+        alert("Internal Server Error!")
+        return null
+      }
+    })
+    .then(responseData => {
+      setDataFetched(true)
+      if (responseData && !responseData.errorMsg) {
+        setDbDetails(responseData.data)
+      }
+    })
+    .catch(err => console.log(err))
+  }, [dataFetched])
+
+  function getDbSize() {
+    if (dbSize !== null)
+      return
+    fetch("http://localhost:4900/db-size", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST", // shouldn't it be POST?
+      body: JSON.stringify({connectionId: dbConnectionId, dbName: 'postgres'})
+    })
+    .then(response => {
+      if (response.ok || response.headers.get("content-type")?.startsWith("application/json")) {
+        return response.json()
+      }else {
+        alert("Internal Server Error!")
+        return null
+      }
+    })
+    .then(responseData => {
+      if (!responseData) {
+        alert("")
+      }else setDbSize(responseData.data)
+    })
+  }
+
   return  (
     <section>
-      <p><strong>Connected User:</strong>{}</p>
-      {/*<p><strong>Connected Database:</strong>{}</p>*/}
-     <h2>Current connections</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>user</th>
-            <th>application name</th>
-            <th>client_hostname</th>
-            <th>client_port</th>
-            <th>state</th>
-          </tr>
-        </thead>
-        <tbody></tbody>{/*Implement button that closes each displayed connection*/}
-      </table>
-      <section>
-        <h2>Run time configs</h2>
-        <p>Config1: <span>value</span> <button>set value</button></p>
-      </section>
-      <section>
-        <h2>Backups</h2>
-      </section>
-    </section>
-  )
-}
-
-function DbDetails() {
-  const [loading, setLoading] = useState(false)
-  useEffect(() => {
-    if (loading) {
-      // fetch("http:localhost:4900/")
-    }
-
-  })
-  return (
-    <section>
-      {loading ? <strong><i>Loading...</i></strong> : <>
-        <h1>Db details</h1><span>Connected {/* show only if connected*/}</span>
-        <h1>Db Name has to sho or something</h1>
-        <p><strong>template?</strong></p>
-        <p><strong>encoding: </strong>{}</p>
-        <p><strong>No of allowed connections: </strong>{}</p>
-        
-        <h2>Db Objects</h2>
-        <i>To implement...</i>
-      </>}
+      {dataFetched && !dbDetails && <p>Something went wrong <button onClick={() => setDataFetched(false)}>reload</button></p>}
+      {dataFetched && dbDetails && (<>
+        <h1>{dbDetails.currentDatabase}</h1><i>{/*POSTGRESQL 'version_num'*/}</i>
+        <p><strong>Connected User:</strong>{dbDetails.sessionUser}</p>
+        <p><strong>Max Connections:</strong>{dbDetails.maxConnections}</p>
+        <p><strong>Current Schema:</strong>{dbDetails.currentSchema}</p>
+        <p><button onClick={getDbSize}>Show database size</button>: {dbSize}</p>
+        <CurrentSessions sessionData={dbDetails.currentSessions}/>
+      </>)}
+      {!dataFetched && (<div className="loader"><div className="spinner"></div></div>)}
     </section>
   )
 }
@@ -509,7 +547,7 @@ export function RoleDetails() {
     })
     .catch(err => {
       console.log(err);
-      alert("Somethin went wrong! Check your internet connection and try again.")
+      alert("Something went wrong! Check your internet connection and try again.")
     })
   }, [])
 
