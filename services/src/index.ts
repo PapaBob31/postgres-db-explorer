@@ -22,7 +22,7 @@ function generateUniqueId() {
 
 
 async function createNewPool(connectionConfig: any) {
-	let newPool = new Pool({...connectionConfig, idleTimeoutMillis: 300000, application_name: "postgres_db_explorer"}) // timeout is 5 minutes
+	let newPool = new Pool({...connectionConfig, idleTimeoutMillis: 120000, application_name: "postgres_db_explorer"}) // timeout is 5 minutes
 	let poolId = ""
 	try { // test if connectionConfig is valid
 		let testClient = await newPool.connect()
@@ -319,8 +319,54 @@ app.post("/db-details", async (req, res) => {
 	payload.maxConnections = queryResults.data[2].rows[0].max_connections
 	payload.currentSchema = queryResults.data[3].rows[0].current_schema
 	payload.currentSessions = queryResults.data[4].rows
-	console.log(queryResults.data[4].rows)
 	res.status(200).json({msg: "success!", errorMsg: null, data: payload})
+})
+
+app.post("/table-indexes", async (req, res) => {
+	if (!req.body.schemaName || !req.body.tableName) {
+		res.status(400).json({msg: null, errorMsg: "Invalid Request parameter! Missing field(s)", data: null})
+		return
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(`SELECT * FROM pg_indexes WHERE tablename = '${req.body.tableName}' AND schemaname = '${req.body.schemaName}'`, pool)
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		const processedData = {rows: queryResult.data.rows, fields: queryResult.data.fields.map(field => field.name)}
+		res.status(200).json({msg: "Success!", data: processedData, errorMsg: null})
+	}
+})
+
+app.post("/drop-index", async (req, res) => {
+	if (!req.body.query) {
+		res.status(400).json({msg: null, errorMsg: "Invalid Request parameter! Missing field(s)", data: null})
+		return
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(req.body.query, pool)
+	console.log(queryResult.data)
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		res.status(200).json({msg: "Index deleted successfully!", data: null, errorMsg: null})
+		// const processedData = {rows: queryResult.data.rows, fields: queryResult.data.fields.map(field => field.name)}
+		// res.status(200).json({msg: "Success!", data: processedData, errorMsg: null})
+	}
+})
+
+app.post("/create-index", async (req, res) => {
+	if (!req.body.query) {
+		res.status(400).json({msg: null, errorMsg: "Invalid Request parameter! Missing field(s)", data: null})
+		return
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(req.body.query, pool)
+	console.log(queryResult.data)
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		res.status(200).json({msg: "Index created successfully!", data: null, errorMsg: null})
+	}
 })
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)
