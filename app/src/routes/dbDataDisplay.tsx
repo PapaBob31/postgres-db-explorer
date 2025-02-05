@@ -4,6 +4,7 @@ import { CreateTable } from "./newTableForm";
 import { useSelector, useDispatch } from "react-redux"
 // import { ServerDetailsContext, generateUniqueId } from "../main"
 import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched } from "../store"
+import { useForm, SubmitHandler } from "react-hook-form"
 
 
 export function getData(query: string, dbConnectionId: string) {
@@ -190,6 +191,221 @@ function InsertForm() {
   )   
 }
 
+
+interface IndexDetails {
+  indexname: string;
+  indexdef: string;
+  tablespace: string;
+}
+
+function TableIndex({ details, removeFromDisplay, reload } : {details: IndexDetails, removeFromDisplay: (indexname: string) => void}) {
+  const {dbConnectionId, schemaName} = useSelector(selectCurrentTab).dataDetails
+  const [indexDefVisible, setIndexDefVisible] = useState(false);
+  const [dropParam, setDropParam] = useState<"CONCURRENTLY"|"CASCADE"|"">("")
+  const [indexDropOptionsVisible, setIndexDropOptionsVisible] = useState(false)
+  const [valuesToEdit, setValuesToEdit] = useState<("indexName"|"indexTableSpace")[]>([])
+  // continue from here, alter table commands implementation
+  function changeDropParam(newValue: "CONCURRENTLY"|"CASCADE") {
+    if (newValue === dropParam) {
+      setDropParam("")
+    }else setDropParam(newValue)
+  }
+
+  function sendIndexDropRequest() {
+    const query = `DROP INDEX ${dropParam === "CONCURRENTLY" ? dropParam : ""} "${schemaName}"."${details.indexname}" ${dropParam === "CASCADE" ? dropParam : ""}`
+    fetch("http://localhost:4900/drop-index", {
+      method: "POST",
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({connectionId: dbConnectionId, query})
+    })
+    .then(response => {
+      if (response.ok) {
+        return response.json()
+      }else {
+        return null
+      }
+    }).then(responseBody => {
+      if (responseBody.errorMg) {
+        alert(responseBody.errorMsg)
+      }else {
+        removeFromDisplay(details.indexname)
+      }
+    })
+  }
+
+  function editValue(value: "indexName"|"indexTableSpace") {
+    if (!valuesToEdit.includes(value)) {
+      setValuesToEdit([...valuesToEdit, value])
+    }
+  }
+
+  function cancelEditState(valueToCancel: "indexName"|"indexTableSpace") {
+    setValuesToEdit(valuesToEdit.filter(value => value !== valueToCancel))
+  }
+
+
+  function sendAlterIndexRequest() {
+
+  }
+  return (
+    <section>
+      <div>
+        <h1>Index Name</h1>
+        {valuesToEdit.includes("indexName") ? <input defaultValue={details.indexname}/> : <span className="inline">{details.indexname}</span>}
+        {valuesToEdit.includes("indexName") ? 
+          <><button onClick={sendAlterIndexRequest}>update</button><button onClick={() => cancelEditState("indexName")}>x</button></> : 
+          <button onClick={() => editValue("indexName")}>edit</button>}
+      </div>
+      <div>
+        <p className="inline">
+          <strong>tablespace:</strong>
+          {valuesToEdit.includes("indexTableSpace") ? 
+            <input defaultValue={details.tablespace ? details.tablespace : 'null'}/> : 
+            (details.tablespace ? details.tablespace : 'null')
+          }
+          {valuesToEdit.includes("indexTableSpace") ? 
+            <><button onClick={sendAlterIndexRequest}>update</button><button onClick={() => cancelEditState("indexTableSpace")}>x</button></> : 
+            <button onClick={() => editValue("indexTableSpace")}>edit</button>
+          }
+        </p>
+      </div>
+
+      <button onClick={() => setIndexDefVisible(!indexDefVisible)}>indexDef</button>
+      {indexDefVisible && <textarea style={{width: "400px"}}>{details.indexdef}</textarea>}
+
+      <button onClick={() => setIndexDropOptionsVisible(!indexDropOptionsVisible)}>Drop</button>
+      {indexDropOptionsVisible && <div style={{width: "400px", backgroundColor: "lightgray"}}>
+        <label style={{display: "block"}} htmlFor="concurrently">
+          CONCURRENTLY
+          <input type="checkbox" name="concurrently" checked={dropParam === "CONCURRENTLY"} onChange={() => changeDropParam("CONCURRENTLY")}/>
+        </label>
+        <label style={{display: "block"}} htmlFor="cascade">
+          CASCADE
+          <input type="checkbox" name="cascade" checked={dropParam === "CASCADE"} onChange={() => changeDropParam("CASCADE")}/>
+        </label>
+        <button onClick={sendIndexDropRequest}>DROP INDEX</button>
+      </div>}
+    </section>
+  )
+
+}
+
+interface IndexFormValues {
+  indexName: string;
+  unique: boolean;
+  concurrently: boolean;
+  only: boolean;
+  method: string;
+  columnNameOrExpression: string;
+  nullsNotDistinct: boolean;
+}
+
+function generateQuery(formData: IndexFormValues, tableName: string, schemaName: string) {
+  const uniqueParam = formData.unique  ? "UNIQUE" : ""
+  const concurrentlyParam = formData.concurrently ? "CONCURRENTLY" : ""
+  const onlyParam = formData.only ? " ONLY " : " "
+  const nndParam = formData.nullsNotDistinct ? "NULLS NOT DISTINCT" : ""
+  return `CREATE ${uniqueParam} INDEX ${concurrentlyParam} ${formData.indexName} ON 
+      ${onlyParam} "${schemaName}"."${tableName}" USING ${formData.method} (${formData.columnNameOrExpression}) ${nndParam}`
+
+}
+
+function TableIndexes({visible}: {visible: boolean}) {
+  const {dbConnectionId, schemaName, tableName} = useSelector(selectCurrentTab).dataDetails
+  const [indexDetails, setIndexDetails] = useState<IndexDetails[]>([])
+  const [newIndexFormVisisble, setNewIndexFormVisible] = useState(false)
+  const { handleSubmit, register } = useForm<IndexFormValues>()
+  const [reload, setReload] = useState(true)
+
+  function removeIndex(indexName: string) {
+    const newIndexDetails = indexDetails.filter(details => details.indexname !== indexName)
+    setIndexDetails(newIndexDetails);
+  }
+
+  useEffect(() => {
+    if (reload == false)
+      return
+    fetch("http://localhost:4900/table-indexes", {
+      method: "POST",
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({connectionId: dbConnectionId, tableName, schemaName})
+    })
+    .then(response => {
+      if (response.ok)
+        return response.json()
+      else return null
+    })
+    .then(responseBody => {
+      if (responseBody && !responseBody.errorMsg) {
+        setIndexDetails(responseBody.data.rows)
+      }else if (responseBody) {
+        alert(responseBody.errorMsg)
+      }else {
+        alert("Something went wrong while trying to get table's index details")
+      }
+      setReload(false)
+    })
+  }, [reload])
+
+  const onSubmit: SubmitHandler<IndexFormValues> = (data) => {
+    const query = generateQuery(data, tableName, schemaName);
+    fetch("http://localhost:4900/create-index", {
+      method: "POST",
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({connectionId: dbConnectionId, query})
+    })
+    .then(response => {
+      if (response.ok) {
+        return response.json()
+      }else return null
+    })
+    .then(responseBody => {
+      if (!responseBody.errorMsg) {
+        setReload(true)
+        setNewIndexFormVisible(false)
+      }else {
+        alert(responseBody.errorMsg)
+      }
+    })
+    .catch(err => console.log(err))
+  }
+  return (
+    <section style={{display: visible ? "block" : "none"}}>
+      <h1>Table Indexes</h1>
+      {indexDetails.map(details => <TableIndex details={details} removeFromDisplay={removeIndex}/>)}
+      <button onClick={() => setNewIndexFormVisible(true)}>New Index</button>
+      {newIndexFormVisisble && <form onSubmit={handleSubmit(onSubmit)}>
+        <button onClick={() => setNewIndexFormVisible(false)}>x</button>
+        <label className="block">index name</label>
+        <input type="text" {...register("indexName", {required: true})}/>
+        <label className="block">Unique</label>
+        <input type="checkbox" {...register("unique")}/>
+        <label className="block">Concurrently</label>
+        <input type="checkbox" {...register("concurrently")}/>
+        <label className="block">Only</label>
+        <input type="checkbox" {...register("only")}/>
+        <label className="block">Method</label>
+        <select {...register("method")}>
+          <option>btree</option>
+          <option>hash</option>
+          <option>gist</option>
+          <option>spgist</option>
+          <option>gin</option>
+          <option>brin</option>
+        </select>
+        <label className="block">column name/expression</label> {/*todo: seperate column name and expression such that both can't be filled at the same time*/}
+        <input type="text" title="You must add parenthesis if you mean an expression" {...register("columnNameOrExpression", {required: true})}/>
+        <label className="block">Nulls not distinct</label>
+        <input type="checkbox" {...register("nullsNotDistinct")}/>
+        <button type="submit">Create Index</button>
+      </form>}
+    </section>
+  )
+}
+
 /*
   Displays columns and rows 
   under the column section, you can do things like alter column, add column but with a gui
@@ -200,6 +416,7 @@ function InsertForm() {
 function TableInfo({ currentDisplay } : {currentDisplay: string}) {
   const [display, setDisplay] = useState(currentDisplay)
   const tableDetails = useSelector(selectCurrentTab).dataDetails
+  // view and create indexes on the table
   
   return (
     <section>
@@ -218,8 +435,10 @@ function TableInfo({ currentDisplay } : {currentDisplay: string}) {
        <nav>
         <button onClick={()=>setDisplay("Table Columns")}>Columns</button> 
         <button onClick={()=>setDisplay("Table Rows")}>Rows</button>
+        <button onClick={()=>setDisplay("indexes")}>Indexes</button>
       </nav>)}
      {(display === "Table Rows" || display === "Table Columns") && <TableRowsDisplay displayType={display}/>}
+     <TableIndexes visible={display === "indexes"}/>
      {display === "insert-form" && <InsertForm />}
     </section>
   )
@@ -317,4 +536,5 @@ export default function DbDataDisplay() {
 
    Foreign data wrappers (see postgres_fdw) allow for objects within one database to act as proxies for objects in other database or clusters.
    The older dblink module (see dblink) provides a similar capability.
+   inform users probably in the docs that they don't need to add double quites when pputting in their own text or something
 */
