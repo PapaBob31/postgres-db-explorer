@@ -5,7 +5,7 @@ import { useSelector, useDispatch } from "react-redux"
 // import { ServerDetailsContext, generateUniqueId } from "../main"
 import { type OpenedTabDetail, selectCurrentTab, tabClosed, selectTabs, tabSwitched } from "../store"
 import { useForm, SubmitHandler } from "react-hook-form"
-
+import { nanoid } from "nanoid"
 
 export function getData(query: string, dbConnectionId: string) {
   return fetch("http://localhost:4900/query-table", {
@@ -193,17 +193,21 @@ function InsertForm() {
 
 
 interface IndexDetails {
+  id: string;
   indexname: string;
   indexdef: string;
   tablespace: string;
 }
 
-function TableIndex({ details, removeFromDisplay, reload } : {details: IndexDetails, removeFromDisplay: (indexname: string) => void}) {
+function TableIndex({ details, removeFromDisplay, updateIndexes } : 
+  {details: IndexDetails, removeFromDisplay: (name: string) => void, updateIndexes: (id: string, key: "indexname"|"tablespace", value: string) => void}) {
   const {dbConnectionId, schemaName} = useSelector(selectCurrentTab).dataDetails
   const [indexDefVisible, setIndexDefVisible] = useState(false);
   const [dropParam, setDropParam] = useState<"CONCURRENTLY"|"CASCADE"|"">("")
   const [indexDropOptionsVisible, setIndexDropOptionsVisible] = useState(false)
   const [valuesToEdit, setValuesToEdit] = useState<("indexName"|"indexTableSpace")[]>([])
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const tableSpaceInputRef = useRef<HTMLInputElement>(null);
   // continue from here, alter table commands implementation
   function changeDropParam(newValue: "CONCURRENTLY"|"CASCADE") {
     if (newValue === dropParam) {
@@ -245,27 +249,70 @@ function TableIndex({ details, removeFromDisplay, reload } : {details: IndexDeta
   }
 
 
-  function sendAlterIndexRequest() {
-
+  function changeIndexName() {
+    fetch("http://localhost:4900/rename-index", {
+      method: "POST",
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({connectionId: dbConnectionId, oldName: details.indexname, newName: nameInputRef.current!.value})
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        alert(responseBody.errorMsg)
+      }else {
+        updateIndexes(details.id, "indexname", nameInputRef.current!.value) 
+      }
+      setValuesToEdit(valuesToEdit.filter(value => value !== "indexName"))
+    })
+    .catch(err => {
+      alert("Internal Server Error!")
+      console.log(err.message)
+    })
   }
+
+  function changeIndexTableSpace() {
+    fetch("http://localhost:4900/set-index-tablespace", {
+      method: "POST",
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({connectionId: dbConnectionId, indexName: details.indexname, tableSpace: tableSpaceInputRef.current!.value})
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        alert(responseBody.errorMsg)
+      }else {
+        updateIndexes(details.id, "tablespace", tableSpaceInputRef.current!.value) 
+      }
+      setValuesToEdit(valuesToEdit.filter(value => value !== "indexTableSpace"))
+    })
+    .catch(err => {
+      alert("Internal Server Error!")
+      console.log(err.message)
+    })
+  }
+
+  console.log(details.tablespace)
+
   return (
     <section>
       <div>
         <h1>Index Name</h1>
-        {valuesToEdit.includes("indexName") ? <input defaultValue={details.indexname}/> : <span className="inline">{details.indexname}</span>}
+        {valuesToEdit.includes("indexName") ? <input defaultValue={details.indexname} ref={nameInputRef}/> : <span className="inline">{details.indexname}</span>}
         {valuesToEdit.includes("indexName") ? 
-          <><button onClick={sendAlterIndexRequest}>update</button><button onClick={() => cancelEditState("indexName")}>x</button></> : 
+          <><button onClick={changeIndexName}>update</button><button onClick={() => cancelEditState("indexName")}>x</button></> : 
           <button onClick={() => editValue("indexName")}>edit</button>}
       </div>
       <div>
         <p className="inline">
           <strong>tablespace:</strong>
           {valuesToEdit.includes("indexTableSpace") ? 
-            <input defaultValue={details.tablespace ? details.tablespace : 'null'}/> : 
+            <input defaultValue={details.tablespace ? details.tablespace : 'null'} ref={tableSpaceInputRef}/> : 
             (details.tablespace ? details.tablespace : 'null')
           }
           {valuesToEdit.includes("indexTableSpace") ? 
-            <><button onClick={sendAlterIndexRequest}>update</button><button onClick={() => cancelEditState("indexTableSpace")}>x</button></> : 
+            <><button onClick={changeIndexTableSpace}>update</button><button onClick={() => cancelEditState("indexTableSpace")}>x</button></> : 
             <button onClick={() => editValue("indexTableSpace")}>edit</button>
           }
         </p>
@@ -313,14 +360,25 @@ function generateQuery(formData: IndexFormValues, tableName: string, schemaName:
 
 function TableIndexes({visible}: {visible: boolean}) {
   const {dbConnectionId, schemaName, tableName} = useSelector(selectCurrentTab).dataDetails
-  const [indexDetails, setIndexDetails] = useState<IndexDetails[]>([])
+  const [indexes, setIndexes] = useState<IndexDetails[]>([])
   const [newIndexFormVisisble, setNewIndexFormVisible] = useState(false)
   const { handleSubmit, register } = useForm<IndexFormValues>()
   const [reload, setReload] = useState(true)
 
   function removeIndex(indexName: string) {
-    const newIndexDetails = indexDetails.filter(details => details.indexname !== indexName)
-    setIndexDetails(newIndexDetails);
+    const newIndexDetails = indexes.filter(index => index.indexname !== indexName)
+    setIndexes(newIndexDetails);
+  }
+
+  function updateIndexes(id: string, key: "indexname"|"tablespace", value: string) {
+    const updatedIndexes = [...indexes];
+    const indexToUpdate = updatedIndexes.find(detail => detail.id === id);
+    if (!indexToUpdate) {
+      console.log("Index to update doesn't exist")
+      return;
+    }
+    indexToUpdate[key] = value;
+    setIndexes(updatedIndexes)
   }
 
   useEffect(() => {
@@ -339,7 +397,8 @@ function TableIndexes({visible}: {visible: boolean}) {
     })
     .then(responseBody => {
       if (responseBody && !responseBody.errorMsg) {
-        setIndexDetails(responseBody.data.rows)
+        const newIndexDetails = responseBody.data.rows.map(row => {return {...row, id: nanoid()}})
+        setIndexes(newIndexDetails)
       }else if (responseBody) {
         alert(responseBody.errorMsg)
       }else {
@@ -375,7 +434,7 @@ function TableIndexes({visible}: {visible: boolean}) {
   return (
     <section style={{display: visible ? "block" : "none"}}>
       <h1>Table Indexes</h1>
-      {indexDetails.map(details => <TableIndex details={details} removeFromDisplay={removeIndex}/>)}
+      {indexes.map(details => <TableIndex key={details.id} details={details} removeFromDisplay={removeIndex} updateIndexes={updateIndexes}/>)}
       <button onClick={() => setNewIndexFormVisible(true)}>New Index</button>
       {newIndexFormVisisble && <form onSubmit={handleSubmit(onSubmit)}>
         <button onClick={() => setNewIndexFormVisible(false)}>x</button>
