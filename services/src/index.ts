@@ -361,11 +361,39 @@ app.post("/create-index", async (req, res) => {
 	}
 	const pool = poolMap[req.body.connectionId]
 	const queryResult = await processReq(req.body.query, pool)
-	console.log(queryResult.data)
 	if (queryResult.errorMsg) {
 		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
 	}else {
 		res.status(200).json({msg: "Index created successfully!", data: null, errorMsg: null})
+	}
+})
+
+
+app.post("/rename-index", async (req, res) => {
+	if (!req.body.oldName || !req.body.newName) {
+		res.status(200).json({msg: null, errorMsg: "Invalid Request parameter! Missing field(s)", data: null})
+		return;
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(`ALTER INDEX ${req.body.oldName} RENAME TO "${req.body.newName}";`, pool);
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		res.status(200).json({msg: "Index renamed successfully!", data: null, errorMsg: null})
+	}
+})
+
+app.post("/set-index-tablespace", async (req, res) => {
+	if (!req.body.indexName || !req.body.tableSpace) {
+		res.status(200).json({msg: null, errorMsg: "Invalid Request parameter! Missing indexName field", data: null})
+		return;
+	}
+	const pool =  poolMap[req.body.connectionId]
+	const queryResult = await processReq(`ALTER INDEX ${req.body.indexName} SET TABLESPACE "${req.body.tableSpace}";`, pool);
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		res.status(200).json({msg: "Index tablespace set successfully!", data: null, errorMsg: null})
 	}
 })
 console.log(`Listening on port ${PortNo}`)
