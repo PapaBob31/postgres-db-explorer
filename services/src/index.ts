@@ -416,7 +416,7 @@ app.post("/create-role", async (req, res) => {
 
 app.post("/reassign-owned", async (req, res) => {
 	if (!req.body.query) {
-		res.status(400).json({errorMsg: "Invalid request body! Invalid roleName prop", data: null, msg: null})
+		res.status(400).json({errorMsg: "Invalid request body! Invalid query prop", data: null, msg: null})
 		return;
 	}
 	const pool = poolMap[req.body.connectionId]
@@ -424,7 +424,21 @@ app.post("/reassign-owned", async (req, res) => {
 	if (queryResult.errorMsg) {
 		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
 	}else {
-		res.status(200).json({msg: "Objects were reassigned successfully in the curent databas3!", data: null, errorMsg: null})
+		res.status(200).json({msg: "Objects were reassigned successfully in the current database!", data: null, errorMsg: null})
+	}
+})
+
+app.post("/drop-owned", async (req, res) => {
+	if (!req.body.query) {
+		res.status(400).json({errorMsg: "Invalid request body! Invalid query prop", data: null, msg: null})
+		return;
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(req.body.query, pool)
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		res.status(200).json({msg: "Objects were dropped successfully in the current database!", data: null, errorMsg: null})
 	}
 })
 console.log(`Listening on port ${PortNo}`)
