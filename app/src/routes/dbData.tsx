@@ -527,12 +527,14 @@ export function DbDetails() {
 export function RoleDetails() {
   const roleTabDetails = useSelector(selectCurrentTab).dataDetails
   const [roleDetails, setRoleDetails] = useState<any>(null)
+  const [reassignInputVisible, setReassignInputVisible] = useState(false)
+  const reassignInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch("http://localhost:4900/get-role-details", {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
-      method: "POST", // shouldn't it be POST?
+      method: "POST",
       body: JSON.stringify({connectionId: roleTabDetails.dbConnectionId, roleName: roleTabDetails.tableName}) // we store it rolname in tableName for convenience
     })
     .then(response => {
@@ -553,6 +555,43 @@ export function RoleDetails() {
     })
   }, [])
 
+  function dropRole() {
+
+  }
+
+  function dropOwned() {
+    fetch("http://localhost:4900/drop-owned", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      credentials: "include"
+    })
+  }
+
+  function reassignOwned(event) {
+    event.preventDefault()
+    if (!reassignInputRef.current!.value) {
+      return
+    }
+    fetch("http://localhost:4900/reassign-owned", {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      credentials: "include",
+      body: JSON.stringify({connectionId: roleTabDetails.dbConnectionId, query: `REASSIGN OWNED BY "${roleTabDetails.tableName}" TO "${reassignInputRef.current!.value}";`})
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        alert(responseBody.errorMsg)
+      }else {
+        alert(responseBody.msg)
+      }
+      setReassignInputVisible(false)
+    })
+    .catch(err => {
+      alert(err.message)
+      console.log("Something went wrong! Check browser console for more details")
+    })
+  }
   return (
     <section>
       {roleDetails ? <>
@@ -569,16 +608,19 @@ export function RoleDetails() {
         <p>rolvaliduntil <input type="checkbox" readOnly checked={roleDetails.rolvaliduntil}/></p>
         {roleDetails.rolpassword && <p>rolpassword <input type="checkbox" readOnly checked={roleDetails.rolpassword}/></p>}
         <section>
-          <h2>Privileges</h2>
-          <div>Privilege 1 <button>revoke</button></div>
-          <button>Grant privilege</button>
-        </section>
-        <section>
           <h2>Objects Owned</h2>
           <i>To implement maybe...</i>
          </section>
-        <button disabled>DROP ROLE</button>
-        <button>DROP OWNED</button>
+        <button onClick={dropRole}>DROP ROLE</button>
+        <button onClick={dropOwned}>DROP OWNED</button>
+        <button onClick={() => setReassignInputVisible(!reassignInputVisible)}>REASSIGNED OWNED</button>
+        {reassignInputVisible && (
+          <form onSubmit={reassignOwned}>
+            <label className="block">New Role</label>
+            <input className="block" type="text" required ref={reassignInputRef}/>
+            <button type="submit">Reassign</button>
+          </form>
+        )}
       </> : <p><b>Loading...</b></p>}
     </section>
   )
