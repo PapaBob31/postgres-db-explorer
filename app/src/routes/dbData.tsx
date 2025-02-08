@@ -529,6 +529,7 @@ export function RoleDetails() {
   const [roleDetails, setRoleDetails] = useState<any>(null)
   const [reassignInputVisible, setReassignInputVisible] = useState(false)
   const reassignInputRef = useRef<HTMLInputElement>(null)
+  const dropOptionsRef = useRef<HTMLSelectElement>(null)
 
   useEffect(() => {
     fetch("http://localhost:4900/get-role-details", {
@@ -559,11 +560,26 @@ export function RoleDetails() {
 
   }
 
-  function dropOwned() {
+  function dropOwned(event) {
+    event.preventDefault()
+
     fetch("http://localhost:4900/drop-owned", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      credentials: "include"
+      credentials: "include",
+      body: JSON.stringify({connectionId: roleTabDetails.dbConnectionId, query: `DROP OWNED BY "${roleTabDetails.tableName}" ${dropOptionsRef.current!.value};`})
+    })
+    .then(response => response.json())
+    .then(resBody => {
+      if (resBody.errorMsg) {
+        alert(resBody.errorMsg)
+      }else {
+        alert("Role's owned objects dropped successfully!")
+      }
+    })
+    .catch(err => {
+      alert("Something went wrong! JUST CHECK YOUR Console")
+      console.log(err.message)
     })
   }
 
@@ -612,7 +628,14 @@ export function RoleDetails() {
           <i>To implement maybe...</i>
          </section>
         <button onClick={dropRole}>DROP ROLE</button>
-        <button onClick={dropOwned}>DROP OWNED</button>
+        <form onSubmit={dropOwned}>
+          <label className="block">DROP OWNED</label>
+          <select ref={dropOptionsRef} required>
+            <option>RESTRICT</option>
+            <option>CASCADE</option>
+          </select>
+          <button type="submit">drop</button>
+        </form>
         <button onClick={() => setReassignInputVisible(!reassignInputVisible)}>REASSIGNED OWNED</button>
         {reassignInputVisible && (
           <form onSubmit={reassignOwned}>
