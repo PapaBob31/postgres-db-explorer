@@ -313,7 +313,7 @@ export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: str
   function showRoleDetails(roleName: string) {
     const roleTabDetails = {
       tabName: `Role - ${roleName}`,
-      tabType: "roleDetails",
+      tabType: "role-details",
       dataDetails: {
         dbConnectionId: anydbConnectionId,
         tableName: roleName,
@@ -323,10 +323,23 @@ export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: str
     dispatch(tabCreated(roleTabDetails))
   }
 
+  function showNewRoleFormTab() {
+    const newRoleFormTab = {
+      tabName: "Create Role",
+      tabType: "create-role-form",
+      dataDetails: {
+        dbConnectionId: anydbConnectionId,
+        tableName: "",
+        schemaName: "",
+      }
+    }
+    dispatch(tabCreated(newRoleFormTab))
+  }
+
   return (
     <section id="cluster-roles">
       <h2>Roles</h2>
-      <button>Create role</button>
+      <button onClick={showNewRoleFormTab}>Create role</button>
       <ul>
         {dbClusterRoles.map(roleName => (
           <li key={roleName}>
