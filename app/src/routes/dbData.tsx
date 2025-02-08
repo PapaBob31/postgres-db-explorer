@@ -3,6 +3,8 @@ import { getData } from "./dbDataDisplay"
 import { selectCurrentTab } from "../store"
 import { useDispatch, useSelector } from "react-redux"
 import { generateUniqueId } from "../main"
+import { useForm, useFieldArray } from "react-hook-form"
+import type { UseFormRegister, SubmitHandler} from "react-hook-form"
 
 // Turn identifiers to quoted identifiers where appropriate
 // Define the type of results to be returned in a fetch request
@@ -423,16 +425,16 @@ function CurrentSessions({sessionData} : {sessionData: ConnectionDetail[]}) {
           <th>user</th>
           <th>application name</th>
           <th>client_hostname</th>
-          <th>client_port</th>
           <th>state</th>
+          <th>client_port</th>
         </tr>
       </thead>
       <tbody>
-        {sessionData.map(data => <tr>
+        {sessionData.map(data => <tr key={data.client_port}>
           <td>{data.usename}</td>
           <td>{data.application_name}</td>
+          <td>{data.client_hostname ? data.client_hostname : "null"}</td> {/*Handle null values later*/}
           <td>{data.state}</td>
-          <td>{data.client_hostname}</td> {/*Handle null values later*/}
           <td>{data.client_port}</td>
         </tr>)}
       </tbody>{/*Implement button that closes each displayed connection*/}
@@ -881,3 +883,141 @@ export function TableRowsDisplay({ displayType } : {displayType: string}) {
     </section>
   )
 }
+
+interface NewRoleDetails {
+  name: string;
+  superuser: boolean;
+  createdb: boolean;
+  createrole: boolean;
+  inherit: boolean;
+  login: boolean;
+  replication: boolean;
+  bypassrls: boolean;
+  password: boolean;
+  validuntil: string;
+  connlimit: number;
+  inrole: string[];
+  role: string[];
+  admin: string[];
+  sysid: string;
+}
+
+function toQuotedIdentifier(idents: string|string[]) {
+  if (Array.isArray(idents)) {
+    let result = idents.map(ident => `"${ident}"`).join(",")
+    return result
+  }
+  return `"${idents}"`
+
+}
+
+function generateCreateRoleQuery(data: NewRoleDetails) {
+  let queryOptions = data.superuser ? "SUPERUSER" : "NOSUPERUSER"
+  queryOptions += data.createdb ? " CREATEDB" : " NOCREATEDB"
+  queryOptions += data.inherit ? " INHERIT" : " NOINHERIT"
+  queryOptions += data.login ? " LOGIN" : " NOLOGIN"
+  queryOptions += data.replication ? " REPLICATION" : " NOREPLICATION"
+  queryOptions += data.bypassrls ? " BYPASSRLS" : " NOBYPASSRLS"
+  queryOptions += `${data.connlimit ? " CONNECTION LIMIT "+data.connlimit : ""}`
+  queryOptions += `${data.password ? " ENCRYPTED PASSWORD "+`'${data.password}'` : ""}`
+  queryOptions += `${data.validuntil ? " VALID UNTIL "+`'${data.validuntil}'` : ""}`
+  queryOptions += `${data.inrole.length > 0 ? " IN ROLE "+toQuotedIdentifier(data.inrole) : ""}`
+  queryOptions += `${data.role.length > 0 ? " ROLE "+toQuotedIdentifier(data.role) : ""}`
+  queryOptions += `${data.admin.length > 0 ? " ADMIN "+toQuotedIdentifier(data.admin) : ""}`
+  queryOptions += `${data.sysid ? " SYSID "+toQuotedIdentifier(data.sysid) : ""}`
+
+  let query = `CREATE ROLE ${toQuotedIdentifier(data.name)} WITH ${queryOptions};`
+  return query
+}
+
+function InRoleInput({index, remove, register} : {index: number, remove: (index: number) => void, register: UseFormRegister<NewRoleDetails>}) {
+  return <>
+    <input type="text" {...register(`inrole.${index}`)}/>
+    <button type="button" onClick={() => remove(index)}>x</button>
+  </>
+}
+
+function MemberRoleInput({index, remove, register} : {index: number, remove: (index: number) => void, register: UseFormRegister<NewRoleDetails>}) {
+  return <>
+    <input type="text" {...register(`role.${index}`)}/>
+    <button type="button" onClick={() => remove(index)}>x</button>
+  </>
+}
+
+function AdminInput({index, remove, register} : {index: number, remove: (index: number) => void, register: UseFormRegister<NewRoleDetails>}) {
+  return <>
+    <input type="text" {...register(`admin.${index}`)}/>
+    <button type="button" onClick={() => remove(index)}>x</button>
+  </>
+}
+
+export function CreateRoleForm() {
+  const { control, handleSubmit, register } = useForm<NewRoleDetails>({defaultValues: {inherit: true}})
+  const inRole = useFieldArray({control, name: "inrole"})
+  const role = useFieldArray({control, name: "role"})
+  const admin = useFieldArray({control, name: "admin"})
+  const {dbConnectionId} = useSelector(selectCurrentTab).dataDetails
+
+  const onSubmit: SubmitHandler<NewRoleDetails> = (data) => {
+    const query = generateCreateRoleQuery(data)
+    fetch("http://localhost:4900/create-role", {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      credentials: "include",
+      body: JSON.stringify({connectionId: dbConnectionId, query})
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        alert(responseBody.errorMsg)
+      }else {
+        alert(`Role ${data.name} created successfully!`)
+      }
+    })
+    .catch(err => {
+      console.log(err.message)
+      alert(err.message);
+    })
+  }
+  return (
+    <section onSubmit={handleSubmit(onSubmit)}>
+      <form>
+        <label className="block">Role Name</label>
+        <input type="text" {...register("name", {required: true})}/>
+        <label className="block">SUPERUSER</label>
+        <input type="checkbox" {...register("superuser")}/>
+        <label className="block">CREATEDB</label>
+        <input type="checkbox" {...register("createdb")}/>
+        <label className="block">CREATEROLE</label>
+        <input type="checkbox" {...register("createrole")}/>
+        <label className="block">INHERIT</label>
+        <input type="checkbox" {...register("inherit")}/>
+        <label className="block">LOGIN</label>
+        <input type="checkbox" {...register("login")}/>
+        <label className="block">REPLICATION</label>
+        <input type="checkbox" {...register("replication")}/>
+        <label className="block">BYPASSRLS</label>
+        <input type="checkbox" {...register("bypassrls")}/>
+        <label className="block">CONNECTION LIMIT</label>
+        <input type="number" {...register("connlimit")}/>
+        <label className="block">PASSWORD</label>
+        <input type="text" {...register("password")}/>
+        <label className="block">VALID UNTIL</label>
+        <input type="text" {...register("validuntil")}/>
+        <label className="block">IN ROLE</label>
+        {inRole.fields.map((field, index) => <InRoleInput key={field.id} index={index} remove={inRole.remove} register={register}/>)}
+        <button type="button" onClick={() => inRole.append("")}>Add</button>
+        <label className="block">ROLE</label>
+        {role.fields.map((field, index) => <MemberRoleInput key={field.id} index={index} remove={role.remove} register={register}/>)}
+        <button type="button" onClick={() => role.append("")}>Add</button>
+        <label className="block">ADMIN</label>
+        {admin.fields.map((field, index) => <AdminInput key={field.id} index={index} remove={admin.remove} register={register}/>)}
+        <button type="button" onClick={() => admin.append("")}>Add</button>
+        <label className="block">SYSID</label>
+        <input type="text" {...register("sysid")}/>
+        <button type="submit">Create</button>
+      </form>
+    </section>
+  )
+}
+

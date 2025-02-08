@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { TableRowsDisplay, NewTypeForm, DbDetails, RoleDetails } from "./dbData"
+import { TableRowsDisplay, NewTypeForm, DbDetails, RoleDetails, CreateRoleForm } from "./dbData"
 import { CreateTable } from "./newTableForm";
 import { useSelector, useDispatch } from "react-redux"
 // import { ServerDetailsContext, generateUniqueId } from "../main"
@@ -513,7 +513,8 @@ const stateDisplayMap: {[key: string]: JSX.Element} = {
   "table-columns-data": <TableInfo currentDisplay="Table Columns"/>,
   "insert-form": <InsertForm />,
   "SQL-Console": <SQLConsole/>,
-  "roleDetails": <RoleDetails/>
+  "role-details": <RoleDetails/>,
+  "create-role-form": <CreateRoleForm/>
 }
 
 function TabBtn( { tabDetail } : {tabDetail: OpenedTabDetail}) {
@@ -572,12 +573,18 @@ export default function DbDataDisplay() {
   Database roles are global across a database cluster installation (and not per individual database).
   switching connected roles
 
+  YOU SHOULD ALWAYS SEE THINGS LIKE THE ROLE YOU ARE CONNECTED AS AND THE DB YOU AR CONNECTED TO
+
   roles can be created with privileges
   roles can be user roles or group roles
   inherit, noinherit
   The role attributes LOGIN, SUPERUSER, CREATEDB, and CREATEROLE can be thought of as special privileges, 
   but they are never inherited as ordinary privileges on database objects are.
   change session default variables
+  role interfaces
+   create role with the appropriate privileges
+   add and remove members 
+   GRANT, ALTER , REVOKE, DROP
 
   FUNCTIONALITY to manage databases
   PostgreSQL server provides a large number of run-time configuration variables. You can set database-specific default values for many of these settings.
