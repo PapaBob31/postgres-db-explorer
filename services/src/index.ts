@@ -270,9 +270,12 @@ app.post("/get-db-schemas", async (req, res) => {
 
 
 app.post("/get-role-details", async(req, res) => {
+	if (!req.body.roleName) {
+		res.status(400).json({errorMsg: "Invalid request body! Invalid roleName prop", data: null, msg: null})
+		return;
+	}
 	const pool = poolMap[req.body.connectionId]
 	const queryResult = await processReq(`SELECT * FROM pg_roles WHERE rolname = '${req.body.roleName}';`, pool)
-	console.log(req.body.roleName)
 	if (queryResult.errorMsg) {
 		res.status(400).json(queryResult)
 	}else if (queryResult.data.rows.length === 0) {
@@ -408,6 +411,20 @@ app.post("/create-role", async (req, res) => {
 		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
 	}else {
 		res.status(200).json({msg: "Role created successfully!", data: null, errorMsg: null})
+	}
+})
+
+app.post("/reassign-owned", async (req, res) => {
+	if (!req.body.query) {
+		res.status(400).json({errorMsg: "Invalid request body! Invalid roleName prop", data: null, msg: null})
+		return;
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(req.body.query, pool)
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		res.status(200).json({msg: "Objects were reassigned successfully in the curent databas3!", data: null, errorMsg: null})
 	}
 })
 console.log(`Listening on port ${PortNo}`)
