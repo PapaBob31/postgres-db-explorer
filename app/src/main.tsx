@@ -47,7 +47,7 @@ function Main(){
         <Servers/>
         {servers.some(server => server.connectedDbs.length > 0) ? <DbDataDisplay /> : <ConnectDbForm />}
       </> : 
-      <div id="loader"><div id="spinner"></div></div>}
+      <div className="loader"><div className="spinner"></div></div>}
     </>
   )
 }
