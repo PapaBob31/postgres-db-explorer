@@ -557,7 +557,22 @@ export function RoleDetails() {
   }, [])
 
   function dropRole() {
-
+    fetch("http://localhost:4900/drop-role", {
+      credentials: "include",
+      headers: {"Content-Type": "application/json"},
+      method: "POST",
+      body: JSON.stringify({connectionId: roleTabDetails.dbConnectionId, roleName: roleTabDetails.tableName}) // we store it's rolname in tableName for convenience
+    })
+    .then(response => response.json())
+    .then(responseBody => {
+      if (responseBody.errorMsg) {
+        alert(responseBody.errorMsg)
+      }else alert(responseBody.msg)
+    })
+    .catch(err => {
+      console.log(err.message)
+      alert("Something went wrong! Check your console for more details")
+    })
   }
 
   function dropOwned(event) {
@@ -639,7 +654,7 @@ export function RoleDetails() {
         <button onClick={() => setReassignInputVisible(!reassignInputVisible)}>REASSIGNED OWNED</button>
         {reassignInputVisible && (
           <form onSubmit={reassignOwned}>
-            <label className="block">New Role</label>
+            <label className="block">New Owner</label>
             <input className="block" type="text" required ref={reassignInputRef}/>
             <button type="submit">Reassign</button>
           </form>
