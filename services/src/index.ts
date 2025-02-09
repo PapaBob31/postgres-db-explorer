@@ -441,5 +441,19 @@ app.post("/drop-owned", async (req, res) => {
 		res.status(200).json({msg: "Objects were dropped successfully in the current database!", data: null, errorMsg: null})
 	}
 })
+
+app.post("/drop-role", async (req, res) => {
+	if (!req.body.roleName) {
+		res.status(400).json({errorMsg: "Invalid Request body. Invalid 'roleName' field!", data: null, msg: null})
+		return;
+	}
+	const pool = poolMap[req.body.connectionId]
+	const queryResult = await processReq(`DROP ROLE "${req.body.roleName}";`, pool)
+	if (queryResult.errorMsg) {
+		res.status(500).json({msg: null, errorMsg: queryResult.errorMsg, data: null})
+	}else {
+		res.status(200).json({msg: "Role deleted successfully!", data: null, errorMsg: null})
+	}
+})
 console.log(`Listening on port ${PortNo}`)
 app.listen(4900)
