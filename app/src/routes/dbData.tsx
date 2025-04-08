@@ -453,7 +453,7 @@ interface DbSessionDetails {
 
 export function DbDetails() {
 
-  const { dbConnectionId } = useSelector(selectCurrentTab).dataDetails
+  const { dbConnectionId, dbName } = useSelector(selectCurrentTab).dataDetails
   const [dbDetails, setDbDetails] = useState<DbSessionDetails|null>(null)
   const [dataFetched, setDataFetched] = useState(false)
   const [dbSize, setDbSize] = useState<string|null>(null)
@@ -465,7 +465,7 @@ export function DbDetails() {
       credentials: "include",
       headers: {"Content-Type": "application/json"},
       method: "POST", // shouldn't it be POST?
-      body: JSON.stringify({connectionId: dbConnectionId, dbName: 'postgres'})
+      body: JSON.stringify({connectionId: dbConnectionId, dbName})
     })
     .then(response => {
       if (response.ok || response.headers.get("content-type")?.startsWith("application/json")) {

@@ -568,12 +568,14 @@ export default function DbDataDisplay() {
 
 
 /*
+  LET IT BE KNOWN THE SOFTWARE WAS BUILT FOR POSTGRES 16 AND ABOVE
+
   create role, set role privieges, group role, drop role, REASSIGN_OWNED, DROP_OWNED
   (For maximum security, issue the REVOKE in the same transaction that creates the object; then there is no window in which another user can use the object.)
   Database roles are global across a database cluster installation (and not per individual database).
   switching connected roles
 
-  YOU SHOULD ALWAYS SEE THINGS LIKE THE ROLE YOU ARE CONNECTED AS AND THE DB YOU AR CONNECTED TO
+  YOU SHOULD ALWAYS SEE THINGS LIKE THE ROLE YOU ARE CONNECTED AS AND THE DB YOU ARE CONNECTED TO
 
   roles can be created with privileges
   roles can be user roles or group roles
@@ -600,7 +602,9 @@ export default function DbDataDisplay() {
   Implement measures and checks for data that has already been edited in the db but the old value is still being displayed here
   when writing the insert interface, try and check data types like character varying for correctness before sending it off to the server
 
-   Foreign data wrappers (see postgres_fdw) allow for objects within one database to act as proxies for objects in other database or clusters.
-   The older dblink module (see dblink) provides a similar capability.
-   inform users probably in the docs that they don't need to add double quites when pputting in their own text or something
+  Foreign data wrappers (see postgres_fdw) allow for objects within one database to act as proxies for objects in other database or clusters.
+  The older dblink module (see dblink) provides a similar capability.
+  inform users probably in the docs that they don't need to add double quites when pputting in their own text or something
+
+  SYNTAX highlighting for different column data types
 */

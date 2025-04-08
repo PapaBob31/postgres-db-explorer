@@ -14,6 +14,13 @@ export interface ConnectionReqPayload {
 	connectionParams: ConnectionParams;
 }
 
+/** Makes a request to the app's server which then makes another connection request to a postgresql server
+ * @typedef {{user?: string, password?: string, host?: string, port?: number, ssl?: string, database?: string}} ConnectionParams
+ * @typedef {{name: string, isConnUri: boolean, connectionUri: string, connectionParams: ConnectionParams;}} ConnectionReqPayload
+ * 
+ * @param {ConnectionReqPayload} reqBody - details needed to connect to the postgresql server
+ * @param {boolean} saveDetails - indicates if the sent connction details should be stored for later resuse on the backend or not
+ * @returns {Promise<Response | null>}*/
 export async function connectDb(reqBody: ConnectionReqPayload, saveDetails: boolean) {
 
 	const serverReq = new Request("http://localhost:4900/connect-db", {
@@ -37,6 +44,9 @@ interface URIFormData {
 	connectionUri: string;
 }
 
+/** Component that renders a form with a field that requires a postgresql connection string as input
+ * Submitting the form initiates a connection to a postgreql server using the necessary form fields values
+ * @returns {JSX.Element}*/
 function ConnectionURIForm() {
 	const formRef = useRef<HTMLFormElement|null>(null)
 	const dispatch = useDispatch();
@@ -52,7 +62,7 @@ function ConnectionURIForm() {
 			return;
 		}
 
-		const connectedDbDetails = await response.json() as ConnectedDbDetails
+		const connectedDbDetails = (await response.json()).data as ConnectedDbDetails
 
 		const newTabPayload =  {
 		    tabName: "Db details",
@@ -62,12 +72,13 @@ function ConnectionURIForm() {
 		      dbConnectionId: connectedDbDetails.connectionId as string,
 		      tableName: "",
 		      schemaName: "",
+		      dbName: connectionParams.database
 		    }
 		}
-		dispatch(tabCreated(newTabPayload))
+		dispatch(tabCreated(newTabPayload)) // a new tab showing the connection DB's details should be displayed on successful connection
 		const connectedServer: ServerDetails = {...connectionReqPayload, connectedDbs: []}
 		connectedServer.connectedDbs.push(connectedDbDetails)
-		dispatch(addNewServer(connectedServer))
+		dispatch(addNewServer(connectedServer)) // server details should be stored in state on successful connection
 	}
 	
 	return (
@@ -97,13 +108,16 @@ interface FormData {
 	ssl: boolean|string;
 }
 
+/** Component that renders a form that some of it's fields represents postgresql connection parameters 
+ * like User, Password, Port number e.t.c. Submitting the form initiates a connection to a 
+ * postgresql server using the needed form fields values
+ * @returns {JSX.Element}*/
 function ConnectionFieldsForm() {
 	const saveConnDetails = useRef<HTMLInputElement|null>(null)
 	const dispatch = useDispatch();
 	const { handleSubmit, register } = useForm<FormData>()
 
 	const connect: SubmitHandler<FormData> = async (formData) => {
-		console.log(formData)
 		const {name, ...connectionParams} = formData;
 		// connectionParams.ssl = connectionParams.ssl ? "require" : "disable"
 		// console.log(formData, connectionParams)
@@ -114,7 +128,7 @@ function ConnectionFieldsForm() {
 			return;
 		}
 
-		const connectedDbDetails = await response.json() as ConnectedDbDetails
+		const connectedDbDetails = (await response.json()).data as ConnectedDbDetails
 
 		const newTabPayload =  {
 		    tabName: "Db Details",
@@ -124,12 +138,13 @@ function ConnectionFieldsForm() {
 		      dbConnectionId: connectedDbDetails.connectionId as string,
 		      tableName: "",
 		      schemaName: "",
+		      dbName: connectionParams.database
 		    }
 		}
-		dispatch(tabCreated(newTabPayload))
+		dispatch(tabCreated(newTabPayload)) // a new tab showing the connection DB's details should be displayed on successful connection
 		const connectedServer: ServerDetails = {...connectionReqPayload, connectedDbs: []}
 		connectedServer.connectedDbs.push(connectedDbDetails)
-		dispatch(addNewServer(connectedServer))
+		dispatch(addNewServer(connectedServer)) // server details should be stored in state on successful connection
 	}
 
 	return (
@@ -159,7 +174,12 @@ function ConnectionFieldsForm() {
 	)
 }
 
+
+/** Parent component that renders a database connection details form
+ * @returns {JSX.Element}*/
 export default function ConnectDbForm() {
+
+	// State variable controlling the type of connection form to be displayed
 	const [display, setDisplay] = useState<"Connection Details"|"Connection URI">("Connection Details")
 
 	return (

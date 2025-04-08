@@ -10,13 +10,14 @@ import DbDataDisplay from "./routes/dbDataDisplay"
 export function generateUniqueId() {
   let key = "";
   const alphaNumeric = "0abcdefghijklmnopqrstuvwxyz123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-  for (let i=0; i<5; i++) {
+  for (let i=0; i<15; i++) {
     const randIndex = Math.floor(Math.random()  * alphaNumeric.length);
     key += alphaNumeric[randIndex];
   }
   return key
 }
 
+/** Parent Component that renders components representing saved server-connection details*/
 function Servers() {
   const servers = useSelector(selectServers);
   return (
@@ -29,7 +30,7 @@ function Servers() {
   )
 }
 
-
+// main component of the app 
 function Main(){
   const dispatch = useDispatch()
   const loaded = useSelector(selectServersFetchStatus)

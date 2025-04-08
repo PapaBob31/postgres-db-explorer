@@ -23,9 +23,9 @@ interface TableBtnProps {
 
 
 function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}: TableBtnProps) {
-  const { dbConnectionId } = useContext(ParentDb)
+  const { dbConnectionId, dbName } = useContext(ParentDb)
   const dispatch = useDispatch()
-  const dataDetails = {tableName, schemaName, dbConnectionId}
+  const dataDetails = {tableName, schemaName, dbConnectionId, dbName}
 
   return (
     <li key={tableName} className="db-table-rep">
@@ -59,7 +59,7 @@ function SchemaTables({schemaName}: {schemaName: string}) {
   const [tables, setTables] = useState<string[]>([])
   const [tablesVisible, setTablesVisible] = useState(false)
   const fetchedTables = useRef(false)
-  const { dbConnectionId } = useContext(ParentDb)
+  const { dbConnectionId, dbName } = useContext(ParentDb)
   const dispatch = useDispatch();
 
   const newTabletab = {
@@ -69,6 +69,7 @@ function SchemaTables({schemaName}: {schemaName: string}) {
       dbConnectionId,
       tableName: "",
       schemaName: schemaName,
+      dbName
     }
   }
 
@@ -230,6 +231,7 @@ function DataBase({dbName}: {dbName: string}) {
         dbConnectionId: connectionId.current as string,
         tableName: "",
         schemaName: "",
+        dbName
       }
     }))
   }
@@ -306,7 +308,7 @@ export function DataBases({clusterDbs}:{clusterDbs: string[]}) {
   )
 }
 
-
+/** Parent Component that renders the roles in a PostgresSQl db server*/
 export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: string[], anydbConnectionId: string}) {
   const dispatch = useDispatch()
 
@@ -318,9 +320,10 @@ export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: str
         dbConnectionId: anydbConnectionId,
         tableName: roleName,
         schemaName: "",
+        dbName: ""
       }
     }
-    dispatch(tabCreated(roleTabDetails))
+    dispatch(tabCreated(roleTabDetails)) // renders a new tab in the UI
   }
 
   function showNewRoleFormTab() {
@@ -331,6 +334,7 @@ export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: str
         dbConnectionId: anydbConnectionId,
         tableName: "",
         schemaName: "",
+        dbName: ""
       }
     }
     dispatch(tabCreated(newRoleFormTab))
@@ -351,18 +355,24 @@ export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: str
   )
 }
 
-function getNewDashboardTabObj(dbConnectionId: string) {
+
+function getNewDashboardTabObj(db: ConnectedDbDetails) {
   return {
     tabName: "Db details",
     tabType: "db-details",
     dataDetails: {
-      dbConnectionId,
+      dbConnectionId: db.connectionId,
       tableName: "",
       schemaName: "",
+      dbName: db.name
     }
   }
 }
 
+/** Makes a request to get all the databases and roles in a postgresql db
+ * server that we have established an initial connection to
+ * @param {string} connectionId - unique id that will be used to identify the server's connection
+ * @returns {Promise<Response|null>}*/
 function getServerObjects(connectionId: string) {
   return fetch("http://localhost:4900", {
     credentials: "include",
@@ -371,20 +381,48 @@ function getServerObjects(connectionId: string) {
     body: JSON.stringify({connectionId}) 
   })
 }
-// todo: implement keeping track of open tabs related to a server/db so that disconnecting
-// from the db or tab will not render such tabs usesless
+
+
+/** Parent Component that renders components that represent the databases and roles respectively in a server
+ * 
+ * @typedef {{user?: string, password?: string, host?: string, port?: number, ssl?: string, database?: string}} ConnectionParams
+ * @typedef {{name: string, isConnUri: boolean, connectionUri: string, connectionParams: ConnectionParams}} ServerDetails
+ * 
+ * @param {ServerDetails} ServerDetails - connection details of the server
+ * @return {JSX.Element}*/
 export default function ServerRep({ serverDetails } : {serverDetails: ServerDetails}) {
   const dispatch = useDispatch()
   const [serverObjs, setServerObjs] = useState<{roles: string[], dbs: string[]}>({roles: [], dbs: []})
+
+  // used to indicate if data hasn't been fetched, is being fetched, or has been fetched
   const [objectsFetchState, setObjectsfetchState] = useState("")
   const [serverObjsVisible, setServerObjsVisible] = useState(false)
 
   useEffect(() => {
-    if (serverDetails.connectedDbs.length === 1 && !objectsFetchState) { // from the login interface
+    /* Connecting to the postgresql database server through the connection form won't fetch the basic server data needed to 
+    indicate the connection was successful so we manually do it after the server representation has rendered */
+    if (serverDetails.connectedDbs.length === 1 && !objectsFetchState) {
       setObjectsfetchState("pending")
-      getServerData()
+      setServerObjsVisible(true)
+      fetchAndSetServerObjs(serverDetails.connectedDbs[0])
     }
   }, [])
+
+
+  async function fetchAndSetServerObjs(targetDb: ConnectedDbDetails) {
+    const serverObjsRequestRes = await getServerObjects(targetDb.connectionId)
+    const responseBody = await serverObjsRequestRes.json()
+    if (responseBody.errorMsg) {
+      setObjectsfetchState("")
+      alert(responseBody.errorMsg)
+    }else {
+      setServerObjs({roles: responseBody.data.roles, dbs: responseBody.data.databases})
+      console.log(serverDetails.name, responseBody.data)
+      setObjectsfetchState("complete")
+      dispatch(addNewConnectedDb({serverName: serverDetails.name, dbDetails: targetDb}))
+      dispatch(tabCreated(getNewDashboardTabObj(targetDb)))
+    }
+  }
 
   async function getServerData() {
     let {connectedDbs, ...payload} = serverDetails
@@ -401,18 +439,7 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
     }
 
     connectedDbs = [resBody.data]
-    
-    const serverObjsReqRes = await getServerObjects(connectedDbs[0].connectionId)
-    const responseBody = await serverObjsReqRes.json()
-    if (responseBody.errorMsg) {
-      setObjectsfetchState("")
-      alert(responseBody.errorMsg)
-    }else {
-      setServerObjs({roles: responseBody.data.roles, dbs: responseBody.data.databases})
-      setObjectsfetchState("complete")
-      dispatch(addNewConnectedDb({serverName: serverDetails.name, dbDetails: connectedDbs[0]}))
-      dispatch(tabCreated(getNewDashboardTabObj(connectedDbs[0].connectionId)))
-    }
+    fetchAndSetServerObjs(connectedDbs[0])
   }
 
   function toggleServerObjsVisibility() {
@@ -430,6 +457,7 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
         {objectsFetchState === "pending" && "Loading..."}
         {objectsFetchState === "complete" && (
           <ServerDetailsContext.Provider value={serverDetails}>
+            {/*{console.log("wtf", serverDetails.name) || "shhhh"}*/}
             <Roles dbClusterRoles={serverObjs.roles} anydbConnectionId={serverDetails.connectedDbs[0].connectionId} />
             <DataBases clusterDbs={serverObjs.dbs} />
           </ServerDetailsContext.Provider>
