@@ -12,20 +12,34 @@ export const ServerDetailsContext = createContext<ServerDetails>({
 })
 
 const ParentDb = createContext({dbName: "", dbConnectionId: ""})
+ 
 
-
-interface TableBtnProps {
-  schemaName: string,
-  tableName: string,
-  setVisibleMenu: (menu: string)=>void,
-  visibleMenu: string
-}
-
-
-function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}: TableBtnProps) {
+/** Component that displays the representation of a table
+ * @param {string} schemaName - the name of the schema that the table belongs to
+ * @param {string} tableName - Name of the table
+ * @returns {JSX.Element}*/
+function TableBtn({schemaName, tableName}: {schemaName: string, tableName: string}) {
   const { dbConnectionId, dbName } = useContext(ParentDb)
   const dispatch = useDispatch()
   const dataDetails = {tableName, schemaName, dbConnectionId, dbName}
+  const [menuVisible, setMenuVisisble] = useState(false);
+
+  function hideOptionsMenu() { // put it in one of those hooks
+    setMenuVisisble(false)
+  }
+
+  useEffect(() => {
+    if (menuVisible) {
+      // useEffect may run before browser repaint according to the react docs. setTimeout works around 
+      // this behaviour and makes sure the effect's logic runs after browser repaint
+      setTimeout(() => {
+        // hides the displayed menu when any where is clicked on the document
+        document.addEventListener("click", hideOptionsMenu)
+      }, 100)
+    }
+
+    return () => document.removeEventListener("click", hideOptionsMenu)
+  }, [menuVisible])
 
   return (
     <li key={tableName} className="db-table-rep">
@@ -36,12 +50,9 @@ function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}: TableBtn
       }>
         {tableName}
       </button>
-      <button onClick={(event)=>{
-        event.stopPropagation();
-        setVisibleMenu(visibleMenu === tableName ? "" : tableName)
-      }}>...</button>
+      <button id="test" onClick={()=>setMenuVisisble(true)}>...</button>
 
-      {visibleMenu === tableName && (
+      {menuVisible && (
         <div className="db-table-menu">
           <button onClick={()=>dispatch(
             tabCreated({tabType: "insert-form", tabName: tableName, dataDetails})
@@ -53,10 +64,12 @@ function TableBtn({schemaName, tableName, setVisibleMenu, visibleMenu}: TableBtn
   )
 }
 
-
+/** Component that displays an array of components and each component in
+ * the array represents a table in a schema
+ * @param {string} schemaName - the name of the schema that the tables belong to
+ * @returns {JSX.Element}*/
 function SchemaTables({schemaName}: {schemaName: string}) {
-  const [displayedMenu, setDisplayedMenu] = useState("");
-  const [tables, setTables] = useState<string[]>([])
+  const [tables, setTables] = useState<string[]>([]) // Name of the tables to be displayed as `TableBtn` components
   const [tablesVisible, setTablesVisible] = useState(false)
   const fetchedTables = useRef(false)
   const { dbConnectionId, dbName } = useContext(ParentDb)
@@ -77,13 +90,7 @@ function SchemaTables({schemaName}: {schemaName: string}) {
     if (!fetchedTables.current) {
       getDbTables()
     }
-    function hideAnyVisibleMenu() {
-      setDisplayedMenu("false")
-    }
-
-    document.addEventListener("click", hideAnyVisibleMenu)
-    return () => document.removeEventListener("click", hideAnyVisibleMenu);
-  }, [displayedMenu])
+  }, [])
 
   function getDbTables() {
     fetch("http://localhost:4900/get-tables", {
@@ -113,7 +120,7 @@ function SchemaTables({schemaName}: {schemaName: string}) {
           <button id="add-table-btn" onClick={() => dispatch(tabCreated(newTabletab))}>Add Table</button>
           <ul>
             {tables.map(tableName => (
-              <TableBtn schemaName={schemaName} tableName={tableName} key={tableName} setVisibleMenu={setDisplayedMenu} visibleMenu={displayedMenu}/>
+              <TableBtn schemaName={schemaName} tableName={tableName} key={tableName}/>
             ))}
           </ul>
         </> : "Loading...")
@@ -122,7 +129,11 @@ function SchemaTables({schemaName}: {schemaName: string}) {
   )
 }
 
-function SchemaViews({schemaName} : {schemaName: string}) { // start here. Make schema views acceot both db name and connectionid as context
+/** Component that displays an array of components and each component in
+ * the array represents a view in a schema
+ * @param {string} schemaName - the name of the schema that the views belong to
+ * @returns {JSX.Element}*/
+function SchemaViews({schemaName} : {schemaName: string}) {
   const [viewsVisible, setViewsVisible] = useState(false);
   const [views, setViews] = useState<string[]>([])
   const fetchedViews = useRef(false)
@@ -153,12 +164,18 @@ function SchemaViews({schemaName} : {schemaName: string}) { // start here. Make 
   return (
     <>
       <button onClick={() => setViewsVisible(!viewsVisible)}>Views</button>
-      <ul>{viewsVisible && (fetchedViews.current ? views.map((view) => <li key={view}><button>{view}</button></li>) : "Loading...")}</ul>
+      <>
+        {viewsVisible && fetchedViews.current && views.length > 0 && <ul>{views.map((view) => <li key={view}><button>{view}</button></li>)}</ul>}
+        {viewsVisible && fetchedViews.current && views.length === 0 && <span>No existing views</span>}
+        {viewsVisible && !fetchedViews.current && <span>Loading...</span>}
+      </>
     </>
   )
 }
 
-
+/** Component that displays the representation of a schema
+ * @param {string} name - the name of the schema 
+ * @returns {JSX.Element}*/
 function Schema({name}: {name: string}) {
   const [visible, setVisible] = useState(false);
 
@@ -174,11 +191,27 @@ function Schema({name}: {name: string}) {
       }
     </>
   )
-} 
+}
 
+/** Returns the `connectionId` attribute of the first database in the `connectedDbs`
+ * parameter whose name equals the `dbName` parameter or null if none matches
+ * @param {string} dbName - name of the database whose connectionId is needed
+ * @param {{connectionId: string, name: string}[]} connectedDbs - Array of objects, each representing a single database
+ * @returns {string|null} */
+function getDbConnectionId(dbName: string, connectedDbs: ConnectedDbDetails[]) {
+  for (let dbDetails of connectedDbs) {
+    if (dbDetails.name === dbName) {
+      return dbDetails.connectionId
+    }
+  }
+  return null
+}
 
+/** Component that displays the representation of a database
+ * @param {string} dbName - the name of the database 
+ * @returns {JSX.Element}*/
 function DataBase({dbName}: {dbName: string}) {
-  const schemas = useRef<string[]>([]);
+  const schemas = useRef<string[]>([]); // used to store all the schemas in the database
   const [schemasFetchStatus, setSchemasFetchStatus] = useState("")
   const connectedServerDetails = useContext(ServerDetailsContext)
   const connectionId = useRef(getDbConnectionId(dbName, connectedServerDetails.connectedDbs))
@@ -192,14 +225,6 @@ function DataBase({dbName}: {dbName: string}) {
     }
   }, [connectionId.current])
 
-  function getDbConnectionId(dbName: string, connectedDbs: ConnectedDbDetails[]) {
-    for (let dbDetails of connectedDbs) {
-      if (dbDetails.name === dbName) {
-        return dbDetails.connectionId
-      }
-    }
-    return null
-  }
 
   function getDbSchemas() {
     fetch("http://localhost:4900/get-db-schemas", {
@@ -214,7 +239,6 @@ function DataBase({dbName}: {dbName: string}) {
         alert(responseBody.errorMsg)
       }else {
         schemas.current = responseBody.data
-        console.log(responseBody.data)
         setSchemasFetchStatus("complete")
       }
     })
@@ -231,7 +255,7 @@ function DataBase({dbName}: {dbName: string}) {
         dbConnectionId: connectionId.current as string,
         tableName: "",
         schemaName: "",
-        dbName
+        dbName,
       }
     }))
   }
@@ -292,7 +316,9 @@ function DataBase({dbName}: {dbName: string}) {
   )
 }
 
-
+/** Component that displays all the databases in a postgresql server
+ * @param {string[]} clusterDbs - Array containing the names of all the databases in the server
+ * @returns {JSX.Element} */
 export function DataBases({clusterDbs}:{clusterDbs: string[]}) {
   const listItems = [];
   for (let dbName of clusterDbs) {
@@ -417,7 +443,6 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
       alert(responseBody.errorMsg)
     }else {
       setServerObjs({roles: responseBody.data.roles, dbs: responseBody.data.databases})
-      console.log(serverDetails.name, responseBody.data)
       setObjectsfetchState("complete")
       dispatch(addNewConnectedDb({serverName: serverDetails.name, dbDetails: targetDb}))
       dispatch(tabCreated(getNewDashboardTabObj(targetDb)))
@@ -457,7 +482,6 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
         {objectsFetchState === "pending" && "Loading..."}
         {objectsFetchState === "complete" && (
           <ServerDetailsContext.Provider value={serverDetails}>
-            {/*{console.log("wtf", serverDetails.name) || "shhhh"}*/}
             <Roles dbClusterRoles={serverObjs.roles} anydbConnectionId={serverDetails.connectedDbs[0].connectionId} />
             <DataBases clusterDbs={serverObjs.dbs} />
           </ServerDetailsContext.Provider>
