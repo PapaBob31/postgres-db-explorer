@@ -111,14 +111,15 @@ function SchemaTables({schemaName}: {schemaName: string}) {
       }
     })
   }
-
   return (
     <>
       <button onClick={() => setTablesVisible(!tablesVisible)}>Tables</button>
       {tablesVisible && (fetchedTables.current ?
         <>
-          <button id="add-table-btn" onClick={() => dispatch(tabCreated(newTabletab))}>Add Table</button>
-          <ul>
+          <button onClick={() => dispatch(tabCreated(newTabletab))}>
+            <img className="w-6 p-px hover:bg-blue-200 rounded-md cursor-pointer" src="/add.svg"/>
+          </button>
+          <ul className="pl-4 border-l border-gray-800">
             {tables.map(tableName => (
               <TableBtn schemaName={schemaName} tableName={tableName} key={tableName}/>
             ))}
@@ -165,7 +166,11 @@ function SchemaViews({schemaName} : {schemaName: string}) {
     <>
       <button onClick={() => setViewsVisible(!viewsVisible)}>Views</button>
       <>
-        {viewsVisible && fetchedViews.current && views.length > 0 && <ul>{views.map((view) => <li key={view}><button>{view}</button></li>)}</ul>}
+        {viewsVisible && fetchedViews.current && views.length > 0 && (
+          <ul className="pl-4 border-l border-gray-800">
+            {views.map((view) => <li key={view}><button>{view}</button></li>)}
+          </ul>
+        )}
         {viewsVisible && fetchedViews.current && views.length === 0 && <span>No existing views</span>}
         {viewsVisible && !fetchedViews.current && <span>Loading...</span>}
       </>
@@ -183,11 +188,11 @@ function Schema({name}: {name: string}) {
     <>
       <button onClick={() => setVisible(!visible)}>{name}</button>
       {visible && (
-        <>
-          <SchemaTables schemaName={name}/>
-          <SchemaViews schemaName={name}/>
-          <button>Add type</button>
-        </>)
+        <ul className="pl-4 border-l border-gray-800">
+          <li><SchemaTables schemaName={name}/></li>
+          <li><SchemaViews schemaName={name}/></li>
+          <li><button>Add type</button></li>
+        </ul>)
       }
     </>
   )
@@ -293,13 +298,14 @@ function DataBase({dbName}: {dbName: string}) {
 
   return (
     <li>
-      <button onClick={toggleChildrenVisibilty}>{dbName}</button>
-      {dbObjectsVisible && (<>
+      <button className="pl-4 text-gray-700 py-1 border-y border-transparent hover:border-gray-300 hover:text-gray-950 block cursor-pointer w-full text-left" 
+      onClick={toggleChildrenVisibilty}>{dbName}</button>
+      {dbObjectsVisible && (<div className="ml-4 pl-4 border-l border-gray-800">
         <button onClick={openNewConsole} type="button">SQL console</button>
         <h1>Schemas</h1>
         {schemasFetchStatus === "complete" && (
           <ParentDb.Provider value={{dbName, dbConnectionId: connectionId.current!}}>
-            <ul>
+            <ul className="pl-4 border-l border-gray-800 ">
               {schemas.current.map(
                 (schema) => (
                   <li key={schema}>
@@ -311,7 +317,7 @@ function DataBase({dbName}: {dbName: string}) {
           </ParentDb.Provider>
         )}
         {schemasFetchStatus === "pending" && "Loading.."}
-      </>)}
+      </div>)}
     </li>
   )
 }
@@ -320,22 +326,29 @@ function DataBase({dbName}: {dbName: string}) {
  * @param {string[]} clusterDbs - Array containing the names of all the databases in the server
  * @returns {JSX.Element} */
 export function DataBases({clusterDbs}:{clusterDbs: string[]}) {
+  const [dbListVisible, setDbListVisible] = useState(false)
   const listItems = [];
   for (let dbName of clusterDbs) {
     listItems.push(<DataBase dbName={dbName} key={dbName}/>)
   }
   return (
-    <section id="cluster-dbs">
-      <h2>Databases</h2>
-      <ul>
+    <>
+      <h2>
+        <button className="grow flex items-center cursor-pointer" onClick={()=>setDbListVisible(!dbListVisible)}>
+          <img className={`w-4 duration-300 transition-transform ${dbListVisible ? "rotate-y-180" : ""} `} src="/caret-top.svg"/>
+          <span>DataBases</span>
+        </button>
+      </h2>
+      <ul className={`border-l border-gray-800 ${dbListVisible ? "h-auto" : "h-0 overflow-hidden"}`}>
         {listItems}
       </ul>
-    </section>
+    </>
   )
 }
 
 /** Parent Component that renders the roles in a PostgresSQl db server*/
 export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: string[], anydbConnectionId: string}) {
+  const [rolesVisible, setRolesVisible] = useState(false)
   const dispatch = useDispatch()
 
   function showRoleDetails(roleName: string) {
@@ -367,17 +380,24 @@ export function Roles({dbClusterRoles, anydbConnectionId} : {dbClusterRoles: str
   }
 
   return (
-    <section id="cluster-roles">
-      <h2>Roles</h2>
-      <button onClick={showNewRoleFormTab}>Create role</button>
-      <ul>
+    <>
+      <h2 className="flex items-center cursor-pointer justify-between">
+        <button className="grow flex items-center cursor-pointer" onClick={()=>setRolesVisible(!rolesVisible)}>
+          <img className={`w-4 duration-300 transition-transform ${rolesVisible ? "rotate-y-180" : ""} `} src="/caret-top.svg"/>
+          <span>Roles</span>
+        </button>
+        <button onClick={showNewRoleFormTab}><img className="w-6 p-px hover:bg-blue-200 rounded-md cursor-pointer" src="/add.svg"/></button>
+      </h2>
+      <ul className={`border-l border-gray-800 ${rolesVisible ? "h-auto" : "h-0 overflow-hidden"}`}>
         {dbClusterRoles.map(roleName => (
           <li key={roleName}>
-            <button onClick={() => showRoleDetails(roleName)}>{roleName}</button> {/*set width to full when using tailwind to handle proper clicks*/}
+            <button className="text-gray-700 py-1 pl-4 border-t border-b border-transparent hover:border-gray-300 hover:text-gray-950 block cursor-pointer w-full text-left" 
+              onClick={() => showRoleDetails(roleName)}>
+              {roleName}
+            </button> {/*set width to full when using tailwind to handle proper clicks*/}
           </li>))}
       </ul>
-    </section>
-    
+    </>
   )
 }
 
@@ -424,6 +444,7 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
   const [objectsFetchState, setObjectsfetchState] = useState("")
   const [serverObjsVisible, setServerObjsVisible] = useState(false)
 
+  console.log(serverDetails.connectedDbs.length, objectsFetchState, serverObjs)
   useEffect(() => {
     /* Connecting to the postgresql database server through the connection form won't fetch the basic server data needed to 
     indicate the connection was successful so we manually do it after the server representation has rendered */
@@ -449,7 +470,7 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
     }
   }
 
-  async function getServerData() {
+  async function connectToServer() {
     let {connectedDbs, ...payload} = serverDetails
     const response = await connectDb(payload, false)
     if (!response) {
@@ -470,20 +491,26 @@ export default function ServerRep({ serverDetails } : {serverDetails: ServerDeta
   function toggleServerObjsVisibility() {
     if (!objectsFetchState) {
       setObjectsfetchState("pending")
-      getServerData()
+      connectToServer()
     }
     setServerObjsVisible(!serverObjsVisible)
   }
   
   return (
-    <li id="cluster-lvl-objs">
-      <button onClick={toggleServerObjsVisibility}>{serverDetails.name}</button>
+    <li id="cluster-lvl-objs" className="pl-4">
+      <button onClick={toggleServerObjsVisibility} 
+        className={`cursor-pointer rounded-md hover:bg-gray-300 w-full px-2 py-1 mb-2 flex justify-between ${objectsFetchState === "complete" ? " bg-gray-300" : ""}`}> 
+        <span>{serverDetails.name}</span>
+        {objectsFetchState === "complete" ? <img src="/chevron.svg" className="w-4"/> : null}
+      </button>
       {serverObjsVisible && <>
         {objectsFetchState === "pending" && "Loading..."}
         {objectsFetchState === "complete" && (
           <ServerDetailsContext.Provider value={serverDetails}>
-            <Roles dbClusterRoles={serverObjs.roles} anydbConnectionId={serverDetails.connectedDbs[0].connectionId} />
-            <DataBases clusterDbs={serverObjs.dbs} />
+            <ul className="pl-4">
+              <li className="pl-2"><Roles dbClusterRoles={serverObjs.roles} anydbConnectionId={serverDetails.connectedDbs[0].connectionId} /></li>
+              <li className="pl-2"><DataBases clusterDbs={serverObjs.dbs} /></li>
+            </ul>
           </ServerDetailsContext.Provider>
         )}
       </>}

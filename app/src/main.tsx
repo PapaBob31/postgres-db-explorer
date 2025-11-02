@@ -20,9 +20,13 @@ export function generateUniqueId() {
 /** Parent Component that renders components representing saved server-connection details*/
 function Servers() {
   const servers = useSelector(selectServers);
+  console.log(servers)
   return (
-    <section>
-      <h1>Saved Servers</h1>
+    <section className="min-w-xs p-2 bg-gray-100 h-full overflow-auto">
+      <h1 className="font-semibold flex align-baseline border-b border-gray-300 py-1 mb-2">
+        <img src="/server.svg" className="block mr-2 w-6" />
+        <span>Saved Servers</span>
+      </h1>
       <ul>
         {servers.map(server => <ServerRep key={server.name} serverDetails={server}/>)}
       </ul>
@@ -43,13 +47,13 @@ function Main(){
   }, [loaded])
 
   return (
-    <>
+    <section className="flex h-screen">
       {loaded ? <>
         <Servers/>
         {servers.some(server => server.connectedDbs.length > 0) ? <DbDataDisplay /> : <ConnectDbForm />}
       </> : 
       <div className="loader"><div className="spinner"></div></div>}
-    </>
+    </section>
   )
 }
 

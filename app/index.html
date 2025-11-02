@@ -3,89 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="stylesheet" type="text/css" href="./style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RDBMS UI</title>
     <style>
-      main {
-        display: flex;
-      }
-      section {
-        display: block;
-      }
-
-      .loader {
-        width: 100vw;
-        height: 100vh;
-      }
-
-      .spinner {
-        border: 4px solid black;
-        border-radius: 100%;
-        border-right-color: transparent;
-        animation-name: spin;
-        animation-duration: .5s;
-        animation-iteration-count: infinite;
-        animation-timing-function: linear;
-        width: 100px;
-        height: 100px;
-        margin: 250px auto 0;
-      }
-
-      .block{
-        dsiplay: block;
-      }
-
-      .inline {
-        display: inline;
-      }
-
-      @keyframes spin {
-        0% {
-          transform: rotate(0);
-        }
-
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-
-      ul {
-        list-style: none;
-      }
-
-      #server-connect-form label {
-        display: block;
-      }
-
-      #table-attr-selection label {
-        display: block;
-      }
-
-      #create-form {
-        position: relative;
-      }
-
-      .block {
-        display: block;
-        font-weight: 500;
-      }
-
-      .inline {
-        display: flex;
-      }
-
-      .mt-10 {
-        margin-top: 10px;
-      }
-
-
-      #cluster-lvl-objs {
-        width: 20%;
-      }
-
-      #cluster-roles ul {
-/*        padding-left: 30px;*/
-      }
 
       ul button {
         margin-bottom: 2px;
@@ -156,47 +77,6 @@
         padding: 5px 10px;
         border-radius: 10px;
         color: rgb(50, 50, 50);
-      }
-
-      table {
-        border-collapse: collapse;
-        border: 2px solid black;
-        table-layout: auto;
-      }
-
-      th {
-        position: relative;
-      }
-
-      th ul {
-        width: 15rem;
-        position: absolute;
-        padding: 5px 0;
-        border: 1px solid gray;
-        border-radius: 5px;
-        font-size: 0.9rem;
-        font-weight: 500;
-        top: -10px;
-        left: 80%;
-        z-index: 1;
-        background-color: rgb(245, 245, 245);
-      }
-
-      th ul li {
-        padding: 5px;
-      }
-
-      th ul li:hover {
-        background-color: lightblue;
-      }
-
-      thead, table th {
-        border: 2px solid black;
-      }
-
-      table td {
-        border: 1px solid black;
-        padding: 5px 10px;
       }
 
       .collapsable {

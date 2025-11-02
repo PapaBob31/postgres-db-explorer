@@ -18,7 +18,7 @@ interface SavedServerDetails {
 	name: string;
 	isConnUri: boolean;
 	connectionUri: string;
-	connectionParams: ConnectionParams;
+	connectionParams: ConnectionParams; // shouldn't the property be optional rather than the properties of the object assigned to it?
 }
 
 export interface ServerDetails extends SavedServerDetails{
@@ -42,6 +42,7 @@ interface TabDetailWithoutId {
 		dbConnectionId: string;
 		tableName: string;
 		schemaName: string;
+		dbName: string;
 	}
 }
 
@@ -161,6 +162,7 @@ const serverSlice =  createSlice({
 			state.data = moveConnectedServersUp(state.data)
 		},
 		addNewConnectedDb(state, action: {type: string, payload: {serverName: string, dbDetails: ConnectedDbDetails}}) {
+			console.log("why the fuck?")
 			const targetServer = state.data.find((data) => data.name === action.payload.serverName)
 			if (targetServer) {
 				targetServer.connectedDbs.push(action.payload.dbDetails)

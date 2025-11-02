@@ -30,13 +30,12 @@ export async function connectDb(reqBody: ConnectionReqPayload, saveDetails: bool
 		body: JSON.stringify({...reqBody, saveConnDetails: saveDetails})
 	})
 
-	let response;
 	try {
-		response = await fetch(serverReq)
+		let response = await fetch(serverReq)
+		return response;
 	}catch(error) {
 		return null
 	}
-	return response
 }
 
 interface URIFormData {
@@ -82,18 +81,20 @@ function ConnectionURIForm() {
 	}
 	
 	return (
-		<form ref={formRef} onSubmit={handleSubmit(connect)}>
-			<h1>Connection URI</h1>
-			<label>Server Name</label>
-			<input type="text" {...register("name", {maxLength: 50, required: true})}/>
-			<label>URI</label>
-			<input type="text" {...register("connectionUri")}/>
-			<label>
-				<span>Save connection details </span>
-				<button title="save connnection details for easier connection next time">info</button>
-			</label>
-			<input type="checkbox" name="saveConnDetails" ref={saveConnDetails}/>
-			<button type="submit">Connect</button>
+		<form ref={formRef} className="w-120 mx-auto border border-gray-300 p-5 rounded-lg bg-white" onSubmit={handleSubmit(connect)}>
+			<h1 className="font-semibold">Connection URI</h1>
+			<label className="text-gray-600 font-semibold">Server Name</label>
+			<input className="outline-none border border-gray-500 mb-2 p-px rounded-md block w-full" type="text" {...register("name", {maxLength: 50, required: true})}/>
+			<label className="text-gray-600 font-semibold">URI</label>
+			<input className="outline-none border border-gray-500 mb-2 p-px rounded-md block w-full" type="text" {...register("connectionUri")}/>
+			<div className="flex">
+				<label>
+					<span className="text-gray-600 font-semibold">Save connection details </span>
+					<button title="save connnection details for easier connection next time">info</button>
+				</label>
+				<input className="ms-2" type="checkbox" name="saveConnDetails" ref={saveConnDetails}/>
+			</div>
+			<button type="submit" className="bg-blue-600 text-white p-2 rounded-md font-semibold mt-2">Connect</button>
 		</form>
 	)
 }
@@ -116,6 +117,8 @@ function ConnectionFieldsForm() {
 	const saveConnDetails = useRef<HTMLInputElement|null>(null)
 	const dispatch = useDispatch();
 	const { handleSubmit, register } = useForm<FormData>()
+	const labelStyle = "text-gray-600 font-semibold"
+	const inputStyle = "outline-none border border-gray-500 mb-2 p-px rounded-md block w-full"
 
 	const connect: SubmitHandler<FormData> = async (formData) => {
 		const {name, ...connectionParams} = formData;
@@ -148,28 +151,32 @@ function ConnectionFieldsForm() {
 	}
 
 	return (
-		<form id="server-connect-form" onSubmit={handleSubmit(connect)}>
-			<h1>Connection parameters</h1>
-			<label>Server Name</label>
-			<input type="text" {...register("name", {maxLength: 50, required: true})}/>
-			<label>User</label>
-			<input type="text" {...register("user")}/>
-			<label>Password</label>
-			<input type="password" {...register("password")}/> 
-			<label>Host name (<em>not ip addr</em>)</label>
-			<input type="text" {...register("host")}/> 
-			<label>Port number</label>
-			<input type="number" {...register("port", {min: 1024, max: 65535})}/> 
-			<label>Db name</label>
-			<input type="text" {...register("database")}/> 
-			<label>SSL</label>
-			<input type="checkbox" {...register("ssl")}/>
-			<label>
-				<span>Save connection details </span>
-				<button title="save connnection details for easier connection next time">info</button>
-			</label>
-			<input type="checkbox" name="saveConnDetails" ref={saveConnDetails}/>
-			<button type="submit">Connect</button>
+		<form id="server-connect-form" className="w-120 mx-auto border border-gray-300 p-5 rounded-lg bg-white" onSubmit={handleSubmit(connect)}>
+			<h1 className="font-semibold">Connection parameters</h1>
+			<label className={labelStyle}>Server Name</label>
+			<input className={inputStyle} type="text" {...register("name", {maxLength: 50, required: true})}/>
+			<label className={labelStyle}>User</label>
+			<input className={inputStyle} type="text" {...register("user")}/>
+			<label className={labelStyle}>Password</label>
+			<input className={inputStyle} type="password" {...register("password")}/> 
+			<label className={labelStyle}>Host name (<em>not ip addr</em>)</label>
+			<input className={inputStyle} type="text" {...register("host")}/> 
+			<label className={labelStyle}>Port number</label>
+			<input className={inputStyle} type="number" {...register("port", {min: 1024, max: 65535})}/> 
+			<label className={labelStyle}>Db name</label>
+			<input className={inputStyle} type="text" {...register("database")}/>
+			<div className="flex">
+				<label className={labelStyle}>SSL</label>
+				<input className="ms-2" type="checkbox" {...register("ssl")}/>
+			</div>
+			<div className="flex">
+				<label>
+					<span className={labelStyle}>Save connection details </span>
+					<button title="save connnection details for easier connection next time">info</button>
+				</label>
+				<input className="ms-2" type="checkbox" name="saveConnDetails" ref={saveConnDetails}/>
+			</div>
+			<button type="submit" className="bg-blue-600 text-white p-2 rounded-md font-semibold mt-2">Connect</button>
 		</form>
 	)
 }
@@ -181,19 +188,23 @@ export default function ConnectDbForm() {
 
 	// State variable controlling the type of connection form to be displayed
 	const [display, setDisplay] = useState<"Connection Details"|"Connection URI">("Connection Details")
+	const activeBtnStyling = "rounded-md bg-white font-semibold"
 
 	return (
-		<section>
-			<button 
-				onClick={() => setDisplay("Connection Details")} 
-				className={display === "Connection Details" ? "active" : "" }>
-				Connection Details
-			</button>
-			<button 
-				onClick={() => setDisplay("Connection URI")}
-				className={display === "Connection URI" ? "active" : "" }>
-				Connection URI
-			</button>
+		<section className="p-2 bg-blue-50">
+			<div className="flex border border-gray-300 bg-gray-100 p-[2px] w-fit rounded-md mb-2 mt-16 mx-auto">
+				<button 
+					onClick={() => setDisplay("Connection Details")} 
+					className={`px-4 ${display === "Connection Details" ? activeBtnStyling : ""}`}>
+					Connection Details
+				</button>
+				<button 
+					onClick={() => setDisplay("Connection URI")}
+					className={`px-4 ${display === "Connection URI" ? activeBtnStyling : ""}`}>
+					Connection URI
+				</button>
+			</div>
+			
 			{display === "Connection Details" ? <ConnectionFieldsForm/> : <ConnectionURIForm/> }
 		</section>
 	)

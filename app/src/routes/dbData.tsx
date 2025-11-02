@@ -418,24 +418,24 @@ interface ConnectionDetail {
 
 function CurrentSessions({sessionData} : {sessionData: ConnectionDetail[]}) {
   return (<>
-    <h2>Current Sessions</h2>
-    <table>
-      <thead>
+    <table className="w-full text-left">
+      <caption className="text-center font-semibold">Current Sessions</caption>
+      <thead className="bg-gray-200">
         <tr>
-          <th>user</th>
-          <th>application name</th>
-          <th>client_hostname</th>
-          <th>state</th>
-          <th>client_port</th>
+          <th className="py-2 font-semibold">user</th>
+          <th className="py-2 font-semibold">application name</th>
+          <th className="py-2 font-semibold">client_hostname</th>
+          <th className="py-2 font-semibold">state</th>
+          <th className="py-2 font-semibold">client_port</th>
         </tr>
       </thead>
       <tbody>
-        {sessionData.map(data => <tr key={data.client_port}>
-          <td>{data.usename}</td>
-          <td>{data.application_name}</td>
-          <td>{data.client_hostname ? data.client_hostname : "null"}</td> {/*Handle null values later*/}
-          <td>{data.state}</td>
-          <td>{data.client_port}</td>
+        {sessionData.map(data => <tr key={data.client_port} className="border-b border-gray-300">
+          <td className="py-2">{data.usename}</td>
+          <td className="py-2">{data.application_name}</td>
+          <td className="py-2">{data.client_hostname ? data.client_hostname : "null"}</td> {/*Handle null values later*/}
+          <td className="py-2">{data.state}</td>
+          <td className="py-2">{data.client_port}</td>
         </tr>)}
       </tbody>{/*Implement button that closes each displayed connection*/}
     </table>
@@ -509,14 +509,17 @@ export function DbDetails() {
   }
 
   return  (
-    <section>
+    <section className="p-8">
       {dataFetched && !dbDetails && <p>Something went wrong <button onClick={() => setDataFetched(false)}>reload</button></p>}
       {dataFetched && dbDetails && (<>
-        <h1>{dbDetails.currentDatabase}</h1><i>{/*POSTGRESQL 'version_num'*/}</i>
-        <p><strong>Connected User:</strong>{dbDetails.sessionUser}</p>
-        <p><strong>Max Connections:</strong>{dbDetails.maxConnections}</p>
-        <p><strong>Current Schema:</strong>{dbDetails.currentSchema}</p>
-        <p><button onClick={getDbSize}>Show database size</button>: {dbSize}</p>
+        <p className="flex w-fit py-2 border-b border-gray-200"><strong className="block font-semibold text-gray-800 w-xs mr-2">Connected database</strong><span className="font-semibold">{dbDetails.currentDatabase}</span></p>{/*<i>POSTGRESQL 'version_num'</i>*/}
+        <p className="flex w-fit py-2 border-b border-gray-200"><strong className="block font-semibold text-gray-800 w-xs mr-2">Connected User</strong><span className="font-semibold">{dbDetails.sessionUser}</span></p>
+        <p className="flex w-fit py-2 border-b border-gray-200"><strong className="block font-semibold text-gray-800 w-xs mr-2">Max Connections</strong><span className="font-semibold">{dbDetails.maxConnections}</span></p>
+        <p className="flex w-fit py-2 border-b border-gray-200"><strong className="block font-semibold text-gray-800 w-xs mr-2">Current Schema</strong><span className="font-semibold">{dbDetails.currentSchema}</span></p>
+        <p className="flex w-fit py-2">
+          <button className="bg-blue-500 hover:bg-blue-700 p-2 rounded-sm text-white cursor-pointer mr-4" onClick={getDbSize}>Show DB size</button>
+          <span>{dbSize}</span>
+        </p>
         <CurrentSessions sessionData={dbDetails.currentSessions}/>
       </>)}
       {!dataFetched && (<div className="loader"><div className="spinner"></div></div>)}

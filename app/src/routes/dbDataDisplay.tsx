@@ -111,7 +111,7 @@ function NewRowInput({columns, id, removeRowInput}: {columns: {column_name: stri
     columns.map((columnDetails) => {
     const {column_name, data_type} = columnDetails;
     let inputType = "text"
-    let numericTypes = ["bigint", "integer", "smallint", "numeric", "real", "double precision", "serial"]; // int2, int4, int8 ?
+    let numericTypes = ["bigintg", "integer", "smallint", "numeric", "real", "double precision", "serial"]; // int2, int4, int8 ?
 
     if (numericTypes.includes(data_type))
       inputType = "number";
@@ -491,7 +491,7 @@ function TableInfo({ currentDisplay } : {currentDisplay: string}) {
         </nav>
       )}
      {display === "root" && (
-       <nav>
+      <nav>
         <button onClick={()=>setDisplay("Table Columns")}>Columns</button> 
         <button onClick={()=>setDisplay("Table Rows")}>Rows</button>
         <button onClick={()=>setDisplay("indexes")}>Indexes</button>
@@ -532,7 +532,7 @@ function TabBtn( { tabDetail } : {tabDetail: OpenedTabDetail}) {
   }
   
   return (
-    <div onClick={switchTabs}>
+    <div onClick={switchTabs} className="px-2 cursor-pointer">
       <span>{tabDetail.tabName}</span>
       <button onClick={closeTab}><b>x</b></button>
     </div> 
@@ -542,12 +542,13 @@ function TabBtn( { tabDetail } : {tabDetail: OpenedTabDetail}) {
 
 function Tabs({ tabDetails } : {tabDetails: OpenedTabDetail[]}) {
   return (
-    <ul>
+    <ul className="flex">
       {tabDetails.map(detail => <TabBtn tabDetail={detail} key={detail.tabId}/>)}
     </ul>
   )
 }
 
+/**/
 function DataDisplay() {
   const openedTabs = useSelector(selectTabs).openedTabs
   const currentTab = useSelector(selectCurrentTab);
@@ -562,49 +563,7 @@ function DataDisplay() {
   )
 }
 
+// Component that renders the app's main display
 export default function DbDataDisplay() {
   return <DataDisplay/>
 }
-
-
-/*
-  LET IT BE KNOWN THE SOFTWARE WAS BUILT FOR POSTGRES 16 AND ABOVE
-
-  create role, set role privieges, group role, drop role, REASSIGN_OWNED, DROP_OWNED
-  (For maximum security, issue the REVOKE in the same transaction that creates the object; then there is no window in which another user can use the object.)
-  Database roles are global across a database cluster installation (and not per individual database).
-  switching connected roles
-
-  YOU SHOULD ALWAYS SEE THINGS LIKE THE ROLE YOU ARE CONNECTED AS AND THE DB YOU ARE CONNECTED TO
-
-  roles can be created with privileges
-  roles can be user roles or group roles
-  inherit, noinherit
-  The role attributes LOGIN, SUPERUSER, CREATEDB, and CREATEROLE can be thought of as special privileges, 
-  but they are never inherited as ordinary privileges on database objects are.
-  change session default variables
-  role interfaces
-   create role with the appropriate privileges
-   add and remove members 
-   GRANT, ALTER , REVOKE, DROP
-
-  FUNCTIONALITY to manage databases
-  PostgreSQL server provides a large number of run-time configuration variables. You can set database-specific default values for many of these settings.
-  drop database
-  ALWAYS REMEMBER THAT THE GOAL IS TO MAKE IT WAY EASIER THAN TYPING THE COMMANDS MANUALLY
-  try and reduce the number of clicks needed to at most 3 before getting to use any ui features
-  Change data fetching mechanism to tan stack query or react query
-  Implement checking if a table exists before query incase a 
-  previously existing table has been deleted outside the guis
-  maybe put some state update logic inside a reducer
-  try setting an identifier name to exceed the NAMEDATALEN limit in the gui
-  quoted identifier
-  Implement measures and checks for data that has already been edited in the db but the old value is still being displayed here
-  when writing the insert interface, try and check data types like character varying for correctness before sending it off to the server
-
-  Foreign data wrappers (see postgres_fdw) allow for objects within one database to act as proxies for objects in other database or clusters.
-  The older dblink module (see dblink) provides a similar capability.
-  inform users probably in the docs that they don't need to add double quites when pputting in their own text or something
-
-  SYNTAX highlighting for different column data types
-*/
